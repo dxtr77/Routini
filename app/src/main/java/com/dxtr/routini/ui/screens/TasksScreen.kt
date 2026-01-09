@@ -1,14 +1,14 @@
 package com.dxtr.routini.ui.screens
 
+import android.app.Activity
+import android.content.Intent
+import android.media.RingtoneManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -49,11 +49,10 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -84,7 +83,6 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TasksScreen(
     navController: NavController,
@@ -327,25 +325,54 @@ fun StandaloneTaskDialog(
     var title by remember { mutableStateOf(initialTitle) }
     var description by remember { mutableStateOf(initialDescription ?: "") }
     
-    // Separate toggles for Date and Time
     var selectedDate by remember { mutableStateOf(initialDate) }
-    var isTimeEnabled by remember { mutableStateOf(initialTime != null) }
+    var selectedTime by remember { mutableStateOf(initialTime) }
+    var showTimePicker by remember { mutableStateOf(false) }
     
-    val timePickerState = rememberTimePickerState(
-        initialHour = initialTime?.hour ?: LocalTime.now().hour,
-        initialMinute = initialTime?.minute ?: LocalTime.now().minute
-    )
-    
+    var shouldPlaySound by remember { mutableStateOf(initialPlaySound) }
     var selectedSoundUri by remember { mutableStateOf(initialSoundUri?.let { Uri.parse(it) }) }
-    var alertMode by remember { mutableStateOf(if (initialPlaySound) 1 else 0) }
-    
-    var showAlarmConfig by remember { mutableStateOf(false) }
+    var showSoundSelectionDialog by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
+    
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) selectedSoundUri = uri
+    }
+    
+    val ringtonePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val uri = result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            if (uri != null) selectedSoundUri = uri
+        }
+    }
     
     // Date picker state
     val datePickerState = rememberDatePickerState(
         initialSelectedDateMillis = initialDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
     )
+    
+    if (showTimePicker) {
+        val timePickerState = rememberTimePickerState(
+            initialHour = selectedTime?.hour ?: 8,
+            initialMinute = selectedTime?.minute ?: 0
+        )
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    selectedTime = LocalTime.of(timePickerState.hour, timePickerState.minute)
+                    showTimePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) { Text("Cancel") }
+            },
+            text = { TimePicker(state = timePickerState) }
+        )
+    }
     
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -367,7 +394,8 @@ fun StandaloneTaskDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 OutlinedTextField(
                     value = title,
@@ -377,8 +405,6 @@ fun StandaloneTaskDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 
-                Spacer(modifier = Modifier.height(8.dp))
-                
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
@@ -386,32 +412,23 @@ fun StandaloneTaskDialog(
                     maxLines = 3,
                     modifier = Modifier.fillMaxWidth()
                 )
-                
-                Spacer(modifier = Modifier.height(16.dp))
 
                 // Date Selection Row
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = stringResource(R.string.date_label),
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                    
-                    Button(
+                    OutlinedButton(
                         onClick = { showDatePicker = true },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (selectedDate != null) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = if (selectedDate != null) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Icon(Icons.Default.CalendarMonth, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = selectedDate?.format(DateTimeFormatter.ofPattern("MMM dd, yyyy")) ?: stringResource(R.string.set_date_action)
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CalendarMonth, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = selectedDate?.format(DateTimeFormatter.ofPattern("MMM dd, yyyy")) ?: stringResource(R.string.set_date_action)
+                            )
+                        }
                     }
                     
                     if (selectedDate != null) {
@@ -421,61 +438,76 @@ fun StandaloneTaskDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Time/Alarm Selection Row
+                // Time Row
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = stringResource(R.string.alert_label),
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                    
-                    IconButton(
-                        onClick = { showAlarmConfig = true },
-                        modifier = Modifier.background(
-                            color = if (isTimeEnabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                            shape = CircleShape
-                        )
+                    OutlinedButton(
+                        onClick = { showTimePicker = true },
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Icon(
-                            imageVector = if (isTimeEnabled) {
-                                if (alertMode == 1) Icons.Default.Alarm else Icons.Default.Notifications
-                            } else {
-                                Icons.Default.Add 
-                            },
-                            contentDescription = stringResource(R.string.set_alert_desc),
-                            tint = if (isTimeEnabled) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Schedule, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = selectedTime?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: "Set Time"
+                            )
+                        }
+                    }
+                    
+                    if (selectedTime != null) {
+                        IconButton(onClick = { selectedTime = null }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear time")
+                        }
+                    }
+                }
+
+                // Alert Config Row
+                if (selectedTime != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (shouldPlaySound) Icons.Default.Alarm else Icons.Default.Notifications,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = if (shouldPlaySound) stringResource(R.string.alarm_option) else stringResource(R.string.notify_option),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    text = if (shouldPlaySound) "Sound enabled" else "Silent",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = shouldPlaySound,
+                            onCheckedChange = { shouldPlaySound = it }
                         )
                     }
                     
-                    if (isTimeEnabled) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = String.format("%02d:%02d", timePickerState.hour, timePickerState.minute),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary
+                    if (shouldPlaySound) {
+                        Button(
+                            onClick = { showSoundSelectionDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                             )
-                            Text(
-                                text = if (alertMode == 1) stringResource(R.string.alarm_option) else stringResource(R.string.notify_option),
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                        ) {
+                            Icon(Icons.Default.MusicNote, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = if (selectedSoundUri != null) stringResource(R.string.sound_selected) else stringResource(R.string.pick_custom_sound))
                         }
-                        Spacer(modifier = Modifier.weight(1f))
-                        IconButton(onClick = { isTimeEnabled = false }) {
-                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.clear_alert_desc))
-                        }
-                    } else {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = stringResource(R.string.none_label),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
             }
@@ -484,14 +516,13 @@ fun StandaloneTaskDialog(
             Button(
                 onClick = { 
                     if (title.isNotBlank()) {
-                        val time = if (isTimeEnabled) LocalTime.of(timePickerState.hour, timePickerState.minute) else null
                         onConfirm(
                             title,
                             description.ifBlank { null },
                             selectedDate,
-                            time,
+                            selectedTime,
                             selectedSoundUri?.toString(),
-                            isTimeEnabled && alertMode == 1
+                            shouldPlaySound
                         ) 
                     }
                 },
@@ -507,20 +538,43 @@ fun StandaloneTaskDialog(
         }
     )
     
-    if (showAlarmConfig) {
-        AlarmConfigDialog(
-            initialHour = if (isTimeEnabled) timePickerState.hour else LocalTime.now().hour,
-            initialMinute = if (isTimeEnabled) timePickerState.minute else LocalTime.now().minute,
-            initialAlertMode = alertMode,
-            initialSoundUri = selectedSoundUri,
-            onDismiss = { showAlarmConfig = false },
-            onConfirm = { hour, minute, mode, uri ->
-                timePickerState.hour = hour
-                timePickerState.minute = minute
-                alertMode = mode
-                selectedSoundUri = uri
-                isTimeEnabled = true
-                showAlarmConfig = false
+    if (showSoundSelectionDialog) {
+        AlertDialog(
+            onDismissRequest = { showSoundSelectionDialog = false },
+            title = { Text("Choose Sound Source") },
+            text = {
+                Column {
+                    Button(
+                        onClick = {
+                            val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select Alarm Sound")
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, selectedSoundUri)
+                            }
+                            ringtonePickerLauncher.launch(intent)
+                            showSoundSelectionDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("System Ringtones")
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            filePickerLauncher.launch("audio/*")
+                            showSoundSelectionDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Audio File")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showSoundSelectionDialog = false }) {
+                    Text("Cancel")
+                }
             }
         )
     }

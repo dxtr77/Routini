@@ -2,8 +2,8 @@ package com.dxtr.routini.ui.screens
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -47,7 +47,8 @@ fun HomeScreen(
                             pagerState.animateScrollToPage(1)
                         }
                     },
-                    icon = { Icon(Icons.Default.TaskAlt, contentDescription = "Tasks") },
+                    // Switched from TaskAlt (Extended) to CheckCircle (Core) to save APK size
+                    icon = { Icon(Icons.Default.CheckCircle, contentDescription = "Tasks") },
                     label = { Text("Tasks") }
                 )
             }

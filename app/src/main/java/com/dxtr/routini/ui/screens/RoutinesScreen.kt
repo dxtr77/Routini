@@ -1,8 +1,10 @@
 package com.dxtr.routini.ui.screens
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -11,10 +13,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,11 +56,9 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -94,8 +92,8 @@ import com.dxtr.routini.data.Routine
 import com.dxtr.routini.data.RoutineTask
 import com.dxtr.routini.ui.navigation.Screen
 import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RoutinesScreen(
     navController: NavController,
@@ -103,9 +101,9 @@ fun RoutinesScreen(
 ) {
     val routines by viewModel.routines.collectAsState()
     val haptic = LocalHapticFeedback.current
-    var showAddRoutineDialog by remember { mutableStateOf(false) }
-    var routineToDelete by remember { mutableStateOf<Routine?>(null) }
-    
+    var showRoutineDialog by remember { mutableStateOf(false) }
+    var routineToEdit by remember { mutableStateOf<Routine?>(null) }
+
     val context = LocalContext.current
     var showPermissionDialog by remember { mutableStateOf(false) }
     
@@ -130,9 +128,10 @@ fun RoutinesScreen(
         floatingActionButton = {
             FloatingActionButton(onClick = {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                showAddRoutineDialog = true
+                routineToEdit = null // Clear any routine being edited
+                showRoutineDialog = true
             }) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_task_action))
+                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_routine_desc))
             }
         }
     ) { innerPadding ->
@@ -147,51 +146,38 @@ fun RoutinesScreen(
                 RoutineCard(
                     routine = routine,
                     viewModel = viewModel,
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    },
-                    onDeleteRoutine = {
-                        routineToDelete = routine
+                    onEditRoutine = {
+                        routineToEdit = routine
+                        showRoutineDialog = true
                     }
                 )
             }
         }
 
-        if (showAddRoutineDialog) {
-            AddRoutineDialog(
-                onDismiss = { showAddRoutineDialog = false },
+        if (showRoutineDialog) {
+            RoutineDialog(
+                routine = routineToEdit,
+                onDismiss = { showRoutineDialog = false },
                 onConfirm = { name, days ->
-                    val newRoutine = Routine(
-                        name = name,
-                        themeColor = android.graphics.Color.BLUE,
-                        recurringDays = days
-                    )
-                    viewModel.addRoutine(newRoutine)
-                    showAddRoutineDialog = false
-                }
-            )
-        }
-        
-        if (routineToDelete != null) {
-            AlertDialog(
-                onDismissRequest = { routineToDelete = null },
-                title = { Text(stringResource(R.string.delete_routine_title)) },
-                text = { Text(stringResource(R.string.delete_routine_message, routineToDelete?.name ?: "")) },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            routineToDelete?.let { viewModel.deleteRoutine(it) }
-                            routineToDelete = null
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Text(stringResource(R.string.delete_action))
+                    if (routineToEdit == null) {
+                        val newRoutine = Routine(
+                            name = name,
+                            themeColor = android.graphics.Color.BLUE,
+                            recurringDays = days
+                        )
+                        viewModel.addRoutine(newRoutine)
+                    } else {
+                        val updatedRoutine = routineToEdit!!.copy(
+                            name = name,
+                            recurringDays = days
+                        )
+                        viewModel.updateRoutine(updatedRoutine)
                     }
+                    showRoutineDialog = false
                 },
-                dismissButton = {
-                    TextButton(onClick = { routineToDelete = null }) {
-                        Text(stringResource(R.string.cancel_action))
-                    }
+                onDelete = {
+                    routineToEdit?.let { viewModel.deleteRoutine(it) }
+                    showRoutineDialog = false
                 }
             )
         }
@@ -230,16 +216,28 @@ fun RoutinesScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddRoutineDialog(
+fun RoutineDialog(
+    routine: Routine?,
     onDismiss: () -> Unit,
-    onConfirm: (String, List<DayOfWeek>) -> Unit
+    onConfirm: (String, List<DayOfWeek>) -> Unit,
+    onDelete: () -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var selectedDays by remember { mutableStateOf(DayOfWeek.values().toList()) }
+    val isEditing = routine != null
+    var name by remember { mutableStateOf(routine?.name ?: "") }
+    var selectedDays by remember { mutableStateOf(routine?.recurringDays ?: DayOfWeek.values().toList()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.new_routine_title)) },
+        title = { 
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(if (isEditing) "Edit Routine" else stringResource(R.string.new_routine_title))
+                if (isEditing) {
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete Routine", tint = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        },
         text = {
             Column {
                 OutlinedTextField(
@@ -291,7 +289,7 @@ fun AddRoutineDialog(
                 onClick = { if (name.isNotBlank()) onConfirm(name, selectedDays) },
                 enabled = name.isNotBlank() && selectedDays.isNotEmpty()
             ) {
-                Text(stringResource(R.string.create_action))
+                Text(stringResource(R.string.save_action))
             }
         },
         dismissButton = {
@@ -302,13 +300,12 @@ fun AddRoutineDialog(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RoutineCard(
     routine: Routine,
     viewModel: MainViewModel,
-    onClick: () -> Unit,
-    onDeleteRoutine: () -> Unit
+    onEditRoutine: () -> Unit
 ) {
     val tasks by viewModel.getTasksForRoutine(routine.id).collectAsState(initial = emptyList())
     val completedTasks = tasks.count { it.isDone }
@@ -324,13 +321,7 @@ fun RoutineCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .animateContentSize()
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { onClick() },
-                    onLongPress = { onDeleteRoutine() }
-                )
-            },
+            .animateContentSize(),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -360,11 +351,10 @@ fun RoutineCard(
                 }
                 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Added visible Delete button for Routine
-                    IconButton(onClick = onDeleteRoutine) {
+                    IconButton(onClick = onEditRoutine) {
                         Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = stringResource(R.string.delete_routine_title),
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = stringResource(R.string.edit_task_title), // Reusing string
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -496,23 +486,53 @@ fun TaskDialog(
     initialPlaySound: Boolean = false,
     onDismiss: () -> Unit,
     onConfirm: (String, String?, LocalTime?, String?, Boolean) -> Unit,
-    onDelete: (() -> Unit)? = null // Optional delete callback
+    onDelete: (() -> Unit)? = null
 ) {
     var title by remember { mutableStateOf(initialTitle) }
     var description by remember { mutableStateOf(initialDescription ?: "") }
     
-    var isTimeEnabled by remember { mutableStateOf(initialTime != null) }
-    // Initialize time picker with existing time or current time
-    val timePickerState = rememberTimePickerState(
-        initialHour = initialTime?.hour ?: LocalTime.now().hour,
-        initialMinute = initialTime?.minute ?: LocalTime.now().minute
-    )
+    var selectedTime by remember { mutableStateOf(initialTime) }
+    var showTimePicker by remember { mutableStateOf(false) }
     
+    var shouldPlaySound by remember { mutableStateOf(initialPlaySound) }
     var selectedSoundUri by remember { mutableStateOf(initialSoundUri?.let { Uri.parse(it) }) }
-    var alertMode by remember { mutableStateOf(if (initialPlaySound) 1 else 0) } // 0 = Notification, 1 = Alarm
+    var showSoundSelectionDialog by remember { mutableStateOf(false) }
     
-    var showAlarmConfig by remember { mutableStateOf(false) }
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) selectedSoundUri = uri
+    }
     
+    val ringtonePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val uri = result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            if (uri != null) selectedSoundUri = uri
+        }
+    }
+    
+    if (showTimePicker) {
+        val timePickerState = rememberTimePickerState(
+            initialHour = selectedTime?.hour ?: 8,
+            initialMinute = selectedTime?.minute ?: 0
+        )
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    selectedTime = LocalTime.of(timePickerState.hour, timePickerState.minute)
+                    showTimePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) { Text("Cancel") }
+            },
+            text = { TimePicker(state = timePickerState) }
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { 
@@ -533,7 +553,8 @@ fun TaskDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    // Removed fixed height to wrap content
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 OutlinedTextField(
                     value = title,
@@ -543,8 +564,6 @@ fun TaskDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 
-                Spacer(modifier = Modifier.height(8.dp))
-                
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
@@ -553,60 +572,76 @@ fun TaskDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 
-                Spacer(modifier = Modifier.height(16.dp))
-
+                // Time Row
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = stringResource(R.string.alert_label),
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                    
-                    IconButton(
-                        onClick = { showAlarmConfig = true },
-                        modifier = Modifier.background(
-                            color = if (isTimeEnabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                            shape = CircleShape
-                        )
+                    OutlinedButton(
+                        onClick = { showTimePicker = true },
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Icon(
-                            imageVector = if (isTimeEnabled) {
-                                if (alertMode == 1) Icons.Default.Alarm else Icons.Default.Notifications
-                            } else {
-                                Icons.Default.Add 
-                            },
-                            contentDescription = stringResource(R.string.set_alert_desc),
-                            tint = if (isTimeEnabled) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Schedule, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = selectedTime?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: "Set Time"
+                            )
+                        }
+                    }
+                    
+                    if (selectedTime != null) {
+                        IconButton(onClick = { selectedTime = null }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear time")
+                        }
+                    }
+                }
+
+                // Alert Config Row
+                if (selectedTime != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (shouldPlaySound) Icons.Default.Alarm else Icons.Default.Notifications,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = if (shouldPlaySound) stringResource(R.string.alarm_option) else stringResource(R.string.notify_option),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    text = if (shouldPlaySound) "Sound enabled" else "Silent",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = shouldPlaySound,
+                            onCheckedChange = { shouldPlaySound = it }
                         )
                     }
                     
-                    if (isTimeEnabled) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = String.format("%02d:%02d", timePickerState.hour, timePickerState.minute),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary
+                    if (shouldPlaySound) {
+                        Button(
+                            onClick = { showSoundSelectionDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                             )
-                            Text(
-                                text = if (alertMode == 1) stringResource(R.string.alarm_option) else stringResource(R.string.notify_option),
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                        ) {
+                            Icon(Icons.Default.MusicNote, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = if (selectedSoundUri != null) stringResource(R.string.sound_selected) else stringResource(R.string.pick_custom_sound))
                         }
-                        Spacer(modifier = Modifier.weight(1f))
-                        IconButton(onClick = { isTimeEnabled = false }) {
-                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.clear_alert_desc))
-                        }
-                    } else {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = stringResource(R.string.none_label),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
             }
@@ -615,13 +650,12 @@ fun TaskDialog(
             Button(
                 onClick = { 
                     if (title.isNotBlank()) {
-                        val time = if (isTimeEnabled) LocalTime.of(timePickerState.hour, timePickerState.minute) else null
                         onConfirm(
                             title,
                             description.ifBlank { null },
-                            time,
+                            selectedTime,
                             selectedSoundUri?.toString(),
-                            isTimeEnabled && alertMode == 1 
+                            shouldPlaySound
                         ) 
                     }
                 },
@@ -637,112 +671,46 @@ fun TaskDialog(
         }
     )
     
-    if (showAlarmConfig) {
-        AlarmConfigDialog(
-            initialHour = if (isTimeEnabled) timePickerState.hour else LocalTime.now().hour,
-            initialMinute = if (isTimeEnabled) timePickerState.minute else LocalTime.now().minute,
-            initialAlertMode = alertMode,
-            initialSoundUri = selectedSoundUri,
-            onDismiss = { showAlarmConfig = false },
-            onConfirm = { hour, minute, mode, uri ->
-                timePickerState.hour = hour
-                timePickerState.minute = minute
-                alertMode = mode
-                selectedSoundUri = uri
-                isTimeEnabled = true
-                showAlarmConfig = false
+    if (showSoundSelectionDialog) {
+        AlertDialog(
+            onDismissRequest = { showSoundSelectionDialog = false },
+            title = { Text("Choose Sound Source") },
+            text = {
+                Column {
+                    Button(
+                        onClick = {
+                            val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select Alarm Sound")
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, selectedSoundUri)
+                            }
+                            ringtonePickerLauncher.launch(intent)
+                            showSoundSelectionDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("System Ringtones")
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            filePickerLauncher.launch("audio/*")
+                            showSoundSelectionDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Audio File")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showSoundSelectionDialog = false }) {
+                    Text("Cancel")
+                }
             }
         )
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AlarmConfigDialog(
-    initialHour: Int,
-    initialMinute: Int,
-    initialAlertMode: Int,
-    initialSoundUri: Uri?,
-    onDismiss: () -> Unit,
-    onConfirm: (Int, Int, Int, Uri?) -> Unit
-) {
-    val timePickerState = rememberTimePickerState(initialHour = initialHour, initialMinute = initialMinute)
-    var alertMode by remember { mutableStateOf(initialAlertMode) }
-    var selectedSoundUri by remember { mutableStateOf(initialSoundUri) }
-    
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        selectedSoundUri = uri
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.set_alert_title)) },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    SegmentedButton(
-                        selected = alertMode == 0,
-                        onClick = { alertMode = 0 },
-                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
-                    ) {
-                        Icon(Icons.Default.Notifications, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.notify_option))
-                    }
-                    SegmentedButton(
-                        selected = alertMode == 1,
-                        onClick = { alertMode = 1 },
-                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
-                    ) {
-                         Icon(Icons.Default.MusicNote, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.alarm_option))
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                TimePicker(state = timePickerState)
-                
-                if (alertMode == 1) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(
-                        onClick = { launcher.launch("audio/*") },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                    ) {
-                        Icon(Icons.Default.MusicNote, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = if (selectedSoundUri != null) stringResource(R.string.sound_selected) else stringResource(R.string.pick_custom_sound))
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { 
-                    onConfirm(timePickerState.hour, timePickerState.minute, alertMode, selectedSoundUri)
-                }
-            ) {
-                Text(stringResource(R.string.set_action))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel_action))
-            }
-        }
-    )
 }
 
 @Composable

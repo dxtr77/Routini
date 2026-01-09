@@ -22,11 +22,8 @@ object AlarmScheduler {
     fun scheduleRoutineTaskAlarm(context: Context, task: RoutineTask, recurringDays: List<DayOfWeek>?) {
         val time = task.time ?: return
         
-        // Don't schedule if sound/alarm is not requested, unless we want a silent notification
-        // But for now, we schedule everything that has a time.
-        // We will pass the 'shouldPlaySound' flag.
-
-        val alarmTime = calculateNextAlarmTime(time, recurringDays) ?: return
+        // Pass task.isDone to ensure we skip today if the task is already completed
+        val alarmTime = calculateNextAlarmTime(time, recurringDays, task.isDone) ?: return
 
         scheduleAlarm(
             context,
@@ -52,7 +49,9 @@ object AlarmScheduler {
             taskDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         } else {
             // Case 2: Time only (implying "Next occurrence" logic)
-            calculateNextAlarmTime(time, null) ?: return
+            // Standalone tasks generally don't recur, but if they have no date, we assume daily/next.
+            // Since MainViewModel handles cancelling standalone tasks if isDone=true, we pass false here.
+            calculateNextAlarmTime(time, null, false) ?: return
         }
 
         scheduleAlarm(
@@ -60,7 +59,7 @@ object AlarmScheduler {
             taskId = task.id + STANDALONE_TASK_OFFSET,
             title = task.title,
             soundUri = task.customSoundUri,
-            playSound = task.shouldPlaySound, // Use the task's property!
+            playSound = task.shouldPlaySound,
             triggerAtMillis = triggerAtMillis
         )
     }
@@ -119,12 +118,13 @@ object AlarmScheduler {
         alarmManager.cancel(pendingIntent)
     }
 
-    private fun calculateNextAlarmTime(time: LocalTime, recurringDays: List<DayOfWeek>?): Long? {
+    private fun calculateNextAlarmTime(time: LocalTime, recurringDays: List<DayOfWeek>?, isDone: Boolean = false): Long? {
         val now = LocalDateTime.now()
         var nextAlarm = now.with(time)
 
-        // If time has passed for today, start checking from tomorrow
-        if (nextAlarm.isBefore(now)) {
+        // If time has passed for today OR the task is already done for today, 
+        // start checking from tomorrow to find the next occurrence.
+        if (nextAlarm.isBefore(now) || isDone) {
             nextAlarm = nextAlarm.plusDays(1)
         }
 
