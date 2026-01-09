@@ -16,8 +16,6 @@
 - **Smart Scheduling**: Alarms for recurring routines automatically reschedule for the next valid day, even if you mark today's task as complete.
 - **Daily Reset**: A background worker runs every midnight to reset the completion status of your daily tasks, ensuring you start each day fresh.
 - **Modern UI**: A swipeable interface allows you to switch between the Routines and Standalone Tasks screens, built entirely with Jetpack Compose.
-- **Optimized for Release**: The app is configured with ProGuard and ABI splits to ensure the final APK size is small and optimized for the Play Store.
-
 ---
 
 ## 🛠️ Technology Stack
