@@ -32,6 +32,9 @@ interface RoutineDao {
     @Query("SELECT * FROM routine_tasks")
     suspend fun getAllRoutineTasks(): List<RoutineTask>
 
+    @Query("SELECT * FROM routine_tasks WHERE id = :id") // Adjust table name if different
+    suspend fun getTaskById(id: Int): RoutineTask?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRoutineTask(task: RoutineTask): Long
 

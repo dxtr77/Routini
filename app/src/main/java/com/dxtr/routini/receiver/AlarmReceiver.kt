@@ -7,42 +7,105 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
-import android.media.MediaPlayer
-import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.dxtr.routini.MainActivity
 import com.dxtr.routini.R
+import com.dxtr.routini.data.AppDatabase
+import com.dxtr.routini.service.RoutiniService
+import com.dxtr.routini.ui.AlarmActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class AlarmReceiver : BroadcastReceiver() {
 
+    companion object {
+        const val ACTION_STOP = "STOP_ALARM"
+        const val ACTION_MARK_DONE = "MARK_AS_DONE"
+        
+        // keys for extras
+        const val EXTRA_TASK_ID = "TASK_ID"
+        const val EXTRA_TASK_TYPE = "TASK_TYPE" // "ROUTINE" or "STANDALONE"
+        const val TAG = "AlarmReceiver"
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
-        val taskId = intent.getIntExtra("TASK_ID", -1)
+        val taskId = intent.getIntExtra(EXTRA_TASK_ID, -1)
+        val taskType = intent.getStringExtra(EXTRA_TASK_TYPE)
+        val action = intent.action
 
-        if (intent.action == "STOP_ALARM") {
-            stopSound()
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            if (taskId != -1) {
-                notificationManager.cancel(taskId)
+        when (action) {
+            ACTION_STOP -> {
+                val serviceIntent = Intent(context, RoutiniService::class.java).apply {
+                    this.action = RoutiniService.ACTION_STOP
+                }
+                context.startService(serviceIntent)
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                if (taskId != -1) notificationManager.cancel(taskId)
+                return
             }
-            return
-        }
 
-        val soundUriString = intent.getStringExtra("SOUND_URI")
-        val title = intent.getStringExtra("TITLE") ?: "Routini Alarm"
-        val playSound = intent.getBooleanExtra("PLAY_SOUND", false)
+            ACTION_MARK_DONE -> {
+                val serviceIntent = Intent(context, RoutiniService::class.java).apply {
+                    this.action = RoutiniService.ACTION_STOP
+                }
+                context.startService(serviceIntent)
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                if (taskId != -1) notificationManager.cancel(taskId)
 
-        Log.d("AlarmReceiver", "Alarm received: $title, Play Sound: $playSound, Task ID: $taskId")
+                val pendingResult = goAsync()
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        val db = AppDatabase.getDatabase(context)
+                        if (taskId != -1) {
+                            when (taskType) {
+                                "ROUTINE" -> {
+                                    val task = db.routineDao().getTaskById(taskId)
+                                    task?.let { db.routineDao().updateRoutineTask(it.copy(isDone = true)) }
+                                }
+                                "STANDALONE" -> {
+                                     val task = db.standaloneTaskDao().getTaskById(taskId)
+                                     task?.let { db.standaloneTaskDao().update(it.copy(isDone = true)) }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error updating task in background", e)
+                    } finally {
+                        pendingResult.finish()
+                    }
+                }
+                return
+            }
 
-        showNotification(context, title, playSound, taskId)
+            else -> {
+                // Normal Alarm Trigger
+                val soundUriString = intent.getStringExtra("SOUND_URI")
+                val title = intent.getStringExtra("TITLE") ?: "Routini Alarm"
+                val playSound = intent.getBooleanExtra("PLAY_SOUND", false)
 
-        if (playSound) {
-            playSound(context, soundUriString)
+                showNotification(context, title, playSound, taskId, taskType)
+
+                if (playSound) {
+                    val serviceIntent = Intent(context, RoutiniService::class.java).apply {
+                        this.action = RoutiniService.ACTION_PLAY
+                        putExtra(RoutiniService.EXTRA_SOUND_URI, soundUriString)
+                        putExtra(RoutiniService.EXTRA_TITLE, title)
+                    }
+                    context.startForegroundService(serviceIntent)
+                }
+            }
         }
     }
 
-    private fun showNotification(context: Context, title: String, playSound: Boolean, taskId: Int) {
+    private fun showNotification(
+        context: Context, 
+        title: String, 
+        playSound: Boolean, 
+        taskId: Int,
+        taskType: String?
+    ) {
         val channelId = "RoutiniAlarmChannel"
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -51,87 +114,77 @@ class AlarmReceiver : BroadcastReceiver() {
                 description = "Notifications for scheduled tasks"
                 enableVibration(true)
                 setBypassDnd(true)
+                if (playSound) {
+                    val audioAttributes = AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .build()
+                    setSound(null, audioAttributes)
+                }
             }
             notificationManager.createNotificationChannel(channel)
         }
+        
+        val fullScreenIntent = Intent(context, AlarmActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("TITLE", title)
+            putExtra(EXTRA_TASK_ID, taskId)
+            putExtra(EXTRA_TASK_TYPE, taskType)
+        }
+        
+        val fullScreenPendingIntent = PendingIntent.getActivity(
+            context,
+            taskId * 1000, // Unique Request Code
+            fullScreenIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val doneIntent = Intent(context, AlarmReceiver::class.java).apply {
+            action = ACTION_MARK_DONE
+            putExtra(EXTRA_TASK_ID, taskId)
+            putExtra(EXTRA_TASK_TYPE, taskType)
+        }
+        val donePendingIntent = PendingIntent.getBroadcast(
+            context,
+            taskId * 100, 
+            doneIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val stopPendingIntent = if (playSound) {
+            val stopIntent = Intent(context, AlarmReceiver::class.java).apply {
+                action = ACTION_STOP
+                putExtra(EXTRA_TASK_ID, taskId)
+            }
+            PendingIntent.getBroadcast(
+                context,
+                taskId,
+                stopIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        } else null
 
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
-
-        if (playSound) {
-            val stopIntent = Intent(context, AlarmReceiver::class.java).apply {
-                action = "STOP_ALARM"
-                putExtra("TASK_ID", taskId)
-            }
-            val stopPendingIntent = PendingIntent.getBroadcast(
-                context,
-                taskId, 
-                stopIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setFullScreenIntent(fullScreenPendingIntent, true) 
+            .addAction(R.drawable.ic_launcher_foreground, "Mark as Done", donePendingIntent)
+            
+        if (playSound && stopPendingIntent != null) {
             builder
-                .setContentText("Alarm is ringing! Tap to stop.")
-                .setContentIntent(stopPendingIntent)
-                .addAction(R.drawable.ic_launcher_foreground, "Stop", stopPendingIntent) // Placeholder icon
+                .setContentText("Alarm is ringing!")
+                .setDeleteIntent(stopPendingIntent)
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent)
                 .setOngoing(true)
-                .setAutoCancel(false) // User must explicitly stop it
         } else {
-            val openAppIntent = Intent(context, MainActivity::class.java)
-            val openAppPendingIntent = PendingIntent.getActivity(
-                context, taskId, openAppIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            builder
-                .setContentText("Your scheduled task is due.")
-                .setContentIntent(openAppPendingIntent)
-                .setOngoing(false)
-                .setAutoCancel(true) // Dismiss on tap
+            builder.setContentText("Task due now.")
+                .setAutoCancel(true)
         }
         
         if (taskId != -1) {
             notificationManager.notify(taskId, builder.build())
         }
-    }
-
-    private fun playSound(context: Context, soundUriString: String?) {
-        try {
-            stopSound()
-            mediaPlayer = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
-                isLooping = true
-            }
-            if (!soundUriString.isNullOrEmpty()) {
-                mediaPlayer?.setDataSource(context, Uri.parse(soundUriString))
-            } else {
-                val defaultSoundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
-                mediaPlayer?.setDataSource(context, defaultSoundUri)
-            }
-            mediaPlayer?.prepare()
-            mediaPlayer?.start()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun stopSound() {
-        try {
-            mediaPlayer?.stop()
-            mediaPlayer?.release()
-            mediaPlayer = null
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    companion object {
-        private var mediaPlayer: MediaPlayer? = null
     }
 }

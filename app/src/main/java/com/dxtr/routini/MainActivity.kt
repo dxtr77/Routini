@@ -12,6 +12,15 @@ import com.dxtr.routini.ui.theme.RoutiniTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Start the Keep-Alive Service
+        val serviceIntent = android.content.Intent(this, com.dxtr.routini.service.RoutiniService::class.java)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
+
         enableEdgeToEdge()
 
         setContent {

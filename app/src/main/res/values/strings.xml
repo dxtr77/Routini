@@ -47,4 +47,6 @@
     <string name="tasks_tab">Tasks</string>
     <string name="any_time_label">Any time</string>
     <string name="add_routine_desc">Add Routine</string>
+    <string name="ok_action">OK</string>
+    <string name="set_time_action">Set Time</string>
 </resources>

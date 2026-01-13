@@ -86,6 +86,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation("com.google.android.material:material:1.13.0")
     implementation(libs.androidx.material.icons.extended) // Restored to fix missing icons
     implementation("com.google.code.gson:gson:2.10.1")
 

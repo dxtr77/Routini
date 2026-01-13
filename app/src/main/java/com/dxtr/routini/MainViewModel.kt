@@ -79,7 +79,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateStandaloneTask(task: StandaloneTask) = viewModelScope.launch {
-        standaloneTaskDao.updateStandaloneTask(task)
+        standaloneTaskDao.update(task)
         if (task.time != null) {
             if (task.isDone) {
                 AlarmScheduler.cancelStandaloneTaskAlarm(getApplication(), task)

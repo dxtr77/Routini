@@ -13,11 +13,17 @@ interface StandaloneTaskDao {
     @Query("SELECT * FROM standalone_tasks ORDER BY time ASC")
     fun getAllStandaloneTasks(): Flow<List<StandaloneTask>>
 
+    @Query("SELECT * FROM standalone_tasks")
+    fun getAllStandaloneTasksSync(): List<StandaloneTask>
+
+    @Query("SELECT * FROM standalone_tasks WHERE id = :id")
+    suspend fun getTaskById(id: Int): StandaloneTask?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertStandaloneTask(task: StandaloneTask): Long
 
     @Update
-    suspend fun updateStandaloneTask(task: StandaloneTask)
+    suspend fun update(task: StandaloneTask)
 
     @Delete
     suspend fun deleteStandaloneTask(task: StandaloneTask)

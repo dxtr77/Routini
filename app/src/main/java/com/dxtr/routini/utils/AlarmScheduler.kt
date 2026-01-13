@@ -31,7 +31,8 @@ object AlarmScheduler {
             title = task.title,
             soundUri = task.customSoundUri,
             playSound = task.shouldPlaySound,
-            triggerAtMillis = alarmTime
+            triggerAtMillis = alarmTime,
+            taskType = "ROUTINE"
         )
     }
 
@@ -60,7 +61,8 @@ object AlarmScheduler {
             title = task.title,
             soundUri = task.customSoundUri,
             playSound = task.shouldPlaySound,
-            triggerAtMillis = triggerAtMillis
+            triggerAtMillis = triggerAtMillis,
+            taskType = "STANDALONE"
         )
     }
 
@@ -78,7 +80,8 @@ object AlarmScheduler {
         title: String,
         soundUri: String?,
         playSound: Boolean,
-        triggerAtMillis: Long
+        triggerAtMillis: Long,
+        taskType: String
     ) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(context, AlarmReceiver::class.java).apply {
@@ -86,6 +89,7 @@ object AlarmScheduler {
             putExtra("SOUND_URI", soundUri)
             putExtra("PLAY_SOUND", playSound)
             putExtra("TASK_ID", taskId)
+            putExtra("TASK_TYPE", taskType)
         }
 
         val pendingIntent = PendingIntent.getBroadcast(
@@ -95,15 +99,8 @@ object AlarmScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (alarmManager.canScheduleExactAlarms()) {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
-            } else {
-                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
-            }
-        } else {
-            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
-        }
+        val alarmClockInfo = AlarmManager.AlarmClockInfo(triggerAtMillis, pendingIntent)
+        alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
     }
 
     private fun cancelAlarm(context: Context, taskId: Int) {
