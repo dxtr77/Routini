@@ -24,30 +24,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Alarm
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.dxtr.routini.R
 import com.dxtr.routini.receiver.AlarmReceiver
+import com.dxtr.routini.ui.theme.AppIcons
 import com.dxtr.routini.ui.theme.RoutiniTheme
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -158,7 +150,7 @@ fun AlarmScreenContent(
                 .padding(32.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.Alarm,
+                painter = painterResource(id = AppIcons.Alarm),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(64.dp)
@@ -201,7 +193,7 @@ fun AlarmScreenContent(
                         .padding(end = 8.dp),
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = null)
+                    Icon(painter = painterResource(id = AppIcons.Close), contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Stop")
                 }
@@ -219,7 +211,7 @@ fun AlarmScreenContent(
                         .padding(start = 8.dp),
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Icon(Icons.Default.Check, contentDescription = null)
+                    Icon(painter = painterResource(id = AppIcons.TaskAlt), contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Done")
                 }

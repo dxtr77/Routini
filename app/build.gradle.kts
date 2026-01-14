@@ -87,7 +87,6 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation("com.google.android.material:material:1.13.0")
-    implementation(libs.androidx.material.icons.extended) // Restored to fix missing icons
     implementation("com.google.code.gson:gson:2.10.1")
 
     // Navigation
@@ -100,6 +99,7 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.compose.foundation)
+    implementation(libs.places)
     ksp(libs.androidx.room.compiler)
 
     // Removed unused View-based dependencies

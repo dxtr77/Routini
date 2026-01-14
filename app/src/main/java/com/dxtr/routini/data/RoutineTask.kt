@@ -3,6 +3,7 @@ package com.dxtr.routini.data
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
+import java.time.DayOfWeek
 import java.time.LocalTime
 
 @Entity(
@@ -24,5 +25,7 @@ data class RoutineTask(
     val time: LocalTime? = null,
     val customSoundUri: String? = null,
     val isDone: Boolean = false,
-    val shouldPlaySound: Boolean = false
+    val shouldPlaySound: Boolean = false,
+    // NEW: If null, follows Routine days. If set, runs only on these days.
+    val specificDays: List<DayOfWeek>? = null
 )

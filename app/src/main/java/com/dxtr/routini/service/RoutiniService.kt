@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -34,7 +35,17 @@ class RoutiniService : Service() {
         super.onCreate()
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, createNotification("Routini is Active", "Monitoring your routines and tasks"))
+
+        // FIX: Add foregroundServiceType for Android 14+ compliance
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID, 
+                createNotification("Routini is Active", "Monitoring your routines and tasks"),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, createNotification("Routini is Active", "Monitoring your routines and tasks"))
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -42,7 +53,9 @@ class RoutiniService : Service() {
         if (action == ACTION_PLAY) {
             val soundUriString = intent.getStringExtra(EXTRA_SOUND_URI)
             val title = intent.getStringExtra(EXTRA_TITLE) ?: "Alarm"
+            
             playSound(soundUriString)
+            
             val notification = createNotification("Alarm: $title", "Playing alarm sound. Tap to open.")
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.notify(NOTIFICATION_ID, notification)
@@ -57,21 +70,32 @@ class RoutiniService : Service() {
     private fun playSound(soundUriString: String?) {
         stopSound() // Stop any previous playback and abandon focus
 
+        // FIX 1: Use AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE to force Spotify/others to PAUSE, not duck.
+        // We use AUDIOFOCUS_GAIN as a fallback for older SDKs to ensure interruption.
+        val focusType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE
+        } else {
+            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+        }
+
         val focusResult = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val attributes = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ALARM)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build()
-            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+            val request = AudioFocusRequest.Builder(focusType) 
                 .setAudioAttributes(attributes)
                 .setAcceptsDelayedFocusGain(false)
-                .setOnAudioFocusChangeListener { }
+                .setOnAudioFocusChangeListener { 
+                    // Optional: Handle if WE lose focus (e.g. phone call comes in)
+                    // if (it == AudioManager.AUDIOFOCUS_LOSS) stopSound() 
+                }
                 .build()
             focusRequest = request
             audioManager?.requestAudioFocus(request)
         } else {
             @Suppress("DEPRECATION")
-            audioManager?.requestAudioFocus(null, AudioManager.STREAM_ALARM, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+            audioManager?.requestAudioFocus(null, AudioManager.STREAM_ALARM, focusType)
         }
 
         if (focusResult != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
@@ -87,17 +111,39 @@ class RoutiniService : Service() {
             )
             isLooping = true
             try {
-                val soundUri = if (!soundUriString.isNullOrEmpty()) {
-                    Uri.parse(soundUriString)
-                } else {
-                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                // FIX 2: Better Fallback logic for Default Sound
+                var soundUri: Uri? = null
+                
+                // 1. Try custom sound
+                if (!soundUriString.isNullOrEmpty()) {
+                    soundUri = Uri.parse(soundUriString)
                 }
-                setDataSource(this@RoutiniService, soundUri)
-                prepareAsync()
-                setOnPreparedListener { it.start() }
-                setOnCompletionListener { stopSelf() }
+                
+                // 2. Try Default Alarm
+                if (soundUri == null) {
+                    soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                }
+
+                // 3. Try Default Notification (if Alarm is silent/null)
+                if (soundUri == null) {
+                    soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                }
+
+                // 4. Try Default Ringtone (Last resort)
+                if (soundUri == null) {
+                    soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                }
+
+                if (soundUri != null) {
+                    setDataSource(this@RoutiniService, soundUri)
+                    prepareAsync()
+                    setOnPreparedListener { it.start() }
+                    setOnCompletionListener { stopSelf() }
+                } else {
+                    Log.e("RoutiniService", "No valid sound URI found to play.")
+                }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e("RoutiniService", "Error setting data source", e)
                 stopSelf()
             }
         }
@@ -105,7 +151,9 @@ class RoutiniService : Service() {
 
     private fun stopSound() {
         try {
-            mediaPlayer?.takeIf { it.isPlaying }?.stop()
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.stop()
+            }
             mediaPlayer?.release()
             mediaPlayer = null
 
@@ -120,7 +168,9 @@ class RoutiniService : Service() {
             Log.e("RoutiniService", "Error stopping sound or abandoning focus", e)
         }
     }
-
+    
+    // ... [Rest of your code (onDestroy, createNotificationChannel, createNotification, Companion) remains the same]
+    
     override fun onDestroy() {
         super.onDestroy()
         stopSound()
@@ -148,7 +198,7 @@ class RoutiniService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
-            .setSmallIcon(R.drawable.ic_launcher_foreground) // Ensure this resource exists
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()

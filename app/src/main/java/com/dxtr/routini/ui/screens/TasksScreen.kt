@@ -6,6 +6,7 @@ import android.media.RingtoneManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -23,19 +24,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Alarm
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -70,6 +58,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -79,6 +68,9 @@ import androidx.navigation.NavController
 import com.dxtr.routini.MainViewModel
 import com.dxtr.routini.R
 import com.dxtr.routini.data.StandaloneTask
+import com.dxtr.routini.ui.composables.EmptyState
+import com.dxtr.routini.ui.composables.StandaloneTaskDialog
+import com.dxtr.routini.ui.theme.AppIcons
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -103,14 +95,14 @@ fun TasksScreen(
                 taskToEdit = null
                 showTaskDialog = true
             }) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_task_action))
+                Icon(painter = painterResource(id = AppIcons.Add), contentDescription = stringResource(R.string.add_task_action))
             }
         }
     ) { innerPadding ->
         if (tasks.isEmpty()) {
             EmptyState(
                 message = "No tasks or alarms. Tap '+' to add one.",
-                icon = Icons.Default.TaskAlt
+                icon = AppIcons.TaskAlt
             )
         } else {
             val groupedTasks = tasks.groupBy { it.date ?: LocalDate.MAX } // Null dates go to the end
@@ -237,7 +229,7 @@ fun StandaloneTaskItem(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onToggle) {
                     Icon(
-                        imageVector = if (task.isDone) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                        painter = painterResource(id = if (task.isDone) AppIcons.CheckCircle else AppIcons.RadioButtonUnchecked),
                         contentDescription = null,
                         tint = if (task.isDone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                         modifier = Modifier.size(28.dp)
@@ -259,16 +251,16 @@ fun StandaloneTaskItem(
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (task.date != null) {
-                           TaskChip(icon = Icons.Default.CalendarMonth, text = task.date.format(DateTimeFormatter.ofPattern("MMM dd")))
+                           TaskChip(icon = AppIcons.CalendarMonth, text = task.date.format(DateTimeFormatter.ofPattern("MMM dd")))
                         }
                         if (task.time != null) {
-                           TaskChip(icon = Icons.Default.Alarm, text = task.time.format(DateTimeFormatter.ofPattern("HH:mm")))
+                           TaskChip(icon = AppIcons.Alarm, text = task.time.format(DateTimeFormatter.ofPattern("HH:mm")))
                         }
                     }
                 }
 
                 IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                    Icon(painter = painterResource(id = AppIcons.Delete), contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
                 }
             }
              AnimatedVisibility(visible = showDescription && !task.description.isNullOrBlank()) {
@@ -284,7 +276,7 @@ fun StandaloneTaskItem(
 }
 
 @Composable
-fun TaskChip(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+fun TaskChip(@DrawableRes icon: Int, text: String) {
     Surface(
         shape = CircleShape,
         color = MaterialTheme.colorScheme.secondaryContainer,
@@ -292,7 +284,7 @@ fun TaskChip(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String
     ) {
         Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                imageVector = icon,
+                painter = painterResource(id = icon),
                 contentDescription = null,
                 modifier = Modifier.size(14.dp),
                 tint = MaterialTheme.colorScheme.onSecondaryContainer
@@ -304,234 +296,5 @@ fun TaskChip(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String
                 color = MaterialTheme.colorScheme.onSecondaryContainer
             )
         }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun StandaloneTaskDialog(
-    dialogTitle: String,
-    initialTitle: String = "",
-    initialDescription: String? = null,
-    initialDate: LocalDate? = null,
-    initialTime: LocalTime? = null,
-    initialSoundUri: String? = null,
-    initialPlaySound: Boolean = false,
-    isSaving: Boolean,
-    onDismiss: () -> Unit,
-    onConfirm: (String, String?, LocalDate?, LocalTime?, String?, Boolean) -> Unit,
-    onDelete: (() -> Unit)? = null
-) {
-    var title by remember { mutableStateOf(initialTitle) }
-    var description by remember { mutableStateOf(initialDescription ?: "") }
-
-    var selectedDate by remember { mutableStateOf(initialDate) }
-    var selectedTime by remember { mutableStateOf(initialTime) }
-    var showTimePicker by remember { mutableStateOf(false) }
-    var showDatePicker by remember { mutableStateOf(false) }
-
-    var shouldPlaySound by remember { mutableStateOf(initialPlaySound) }
-    var selectedSoundUri by remember { mutableStateOf(initialSoundUri?.let { Uri.parse(it) }) }
-    var showSoundSelectionDialog by remember { mutableStateOf(false) }
-
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent(),
-        onResult = { uri: Uri? -> selectedSoundUri = uri }
-    )
-
-    val ringtonePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val uri = result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
-            selectedSoundUri = uri
-        }
-    }
-
-    val datePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = selectedDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
-    )
-
-    if (showTimePicker) {
-        val timePickerState = rememberTimePickerState(
-            initialHour = selectedTime?.hour ?: LocalTime.now().hour,
-            initialMinute = selectedTime?.minute ?: LocalTime.now().minute
-        )
-        AlertDialog(
-            onDismissRequest = { showTimePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    selectedTime = LocalTime.of(timePickerState.hour, timePickerState.minute)
-                    showTimePicker = false
-                }) { Text(stringResource(R.string.ok_action)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showTimePicker = false }) { Text(stringResource(R.string.cancel_action)) }
-            },
-            text = { TimePicker(state = timePickerState) }
-        )
-    }
-    
-    if (showDatePicker) {
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        datePickerState.selectedDateMillis?.let { millis ->
-                            selectedDate = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()
-                        }
-                        showDatePicker = false
-                    }
-                ) { Text(stringResource(R.string.ok_action)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text(stringResource(R.string.cancel_action)) }
-            }
-        ) {
-            DatePicker(state = datePickerState)
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(dialogTitle)
-                if (onDelete != null) {
-                    IconButton(onClick = onDelete) {
-                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete_task_desc), tint = MaterialTheme.colorScheme.error)
-                    }
-                }
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text(stringResource(R.string.task_title_label)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = { Text(stringResource(R.string.task_desc_label)) },
-                    maxLines = 3,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(
-                        onClick = { showDatePicker = true },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.CalendarMonth, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(selectedDate?.format(DateTimeFormatter.ofPattern("MMM dd, yyyy")) ?: stringResource(R.string.set_date_action))
-                    }
-                    if (selectedDate != null) {
-                        IconButton(onClick = { selectedDate = null }) {
-                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.clear_date_desc))
-                        }
-                    }
-                }
-
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(
-                        onClick = { showTimePicker = true },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.Schedule, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(selectedTime?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: stringResource(R.string.set_time_action))
-                    }
-                     if (selectedTime != null) {
-                        IconButton(onClick = { selectedTime = null }) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear time")
-                        }
-                    }
-                }
-
-                if (selectedTime != null) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = if (shouldPlaySound) Icons.Default.Alarm else Icons.Default.Notifications,
-                                contentDescription = null, tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(if (shouldPlaySound) stringResource(R.string.alarm_option) else stringResource(R.string.notify_option), style = MaterialTheme.typography.bodyMedium)
-                        }
-                        Switch(checked = shouldPlaySound, onCheckedChange = { shouldPlaySound = it })
-                    }
-
-                    if (shouldPlaySound) {
-                        Button(
-                            onClick = { showSoundSelectionDialog = true },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                        ) {
-                            Icon(Icons.Default.MusicNote, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = if (selectedSoundUri != null) stringResource(R.string.sound_selected) else stringResource(R.string.pick_custom_sound))
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (title.isNotBlank() && !isSaving) {
-                        onConfirm(title, description.ifBlank { null }, selectedDate, selectedTime, selectedSoundUri?.toString(), shouldPlaySound)
-                    }
-                },
-                enabled = title.isNotBlank() && !isSaving
-            ) {
-                Text(stringResource(R.string.save_action))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel_action))
-            }
-        }
-    )
-
-    if (showSoundSelectionDialog) {
-        AlertDialog(
-            onDismissRequest = { showSoundSelectionDialog = false },
-            title = { Text("Choose Sound Source") },
-            confirmButton = {}, // No confirm button, actions are immediate
-            dismissButton = { TextButton(onClick = { showSoundSelectionDialog = false }) { Text("Cancel") } },
-            text = {
-                Column {
-                    Button(onClick = { /* Launch Ringtone Picker */ }, modifier = Modifier.fillMaxWidth()) {
-                        Text("System Ringtones")
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { filePickerLauncher.launch("audio/*") }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Audio File")
-                    }
-                }
-            }
-        )
     }
 }

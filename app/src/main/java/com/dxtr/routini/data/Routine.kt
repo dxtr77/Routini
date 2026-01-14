@@ -2,7 +2,7 @@ package com.dxtr.routini.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
-import androidx.room.TypeConverters
+import java.time.DayOfWeek
 
 @Entity(tableName = "routines")
 data class Routine(
@@ -12,7 +12,3 @@ data class Routine(
     val isCompleted: Boolean = false,
     val recurringDays: List<DayOfWeek> = DayOfWeek.values().toList()
 )
-
-enum class DayOfWeek {
-    MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY
-}
