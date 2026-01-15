@@ -75,7 +75,7 @@ fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
             }
         }
     ) { padding ->
-        Column(modifier = Modifier.padding(padding).padding(horizontal = 16.dp)) {
+        Column(modifier = Modifier.padding().padding(horizontal = 16.dp)) {
             Text(
                 text = getGreeting(),
                 style = MaterialTheme.typography.headlineMedium
@@ -131,7 +131,7 @@ fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                                modifier = Modifier.padding(top = 0.dp, bottom = 0.dp)
                             )
                         }
                         items(tasksInRoutine, key = { "routine_${it.id}" }) { task ->
@@ -157,7 +157,7 @@ fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
                             text = emptyText,
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 32.dp).fillMaxWidth(),
+                            modifier = Modifier.padding(top = 16.dp).fillMaxWidth(),
                             textAlign = TextAlign.Center
                         )
                     }
@@ -270,7 +270,7 @@ fun TaskCard(task: Task, onTaskStatusChanged: (Task, Boolean) -> Unit, onDelete:
         )
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
