@@ -25,8 +25,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,7 +35,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -55,24 +52,23 @@ import androidx.compose.ui.unit.dp
 import com.dxtr.routini.R
 import com.dxtr.routini.ui.theme.AppIcons
 import java.time.DayOfWeek
-import java.time.Instant
-import java.time.LocalDate
 import java.time.LocalTime
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import androidx.core.net.toUri
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskDialog(
     dialogTitle: String,
     onDismiss: () -> Unit,
-    onConfirm: (String, String?, LocalTime?, String?, Boolean, List<DayOfWeek>?) -> Unit,
+    onConfirm: (String, String?, LocalTime?, String?, Boolean, Boolean, List<DayOfWeek>?) -> Unit,
     onDelete: (() -> Unit)?,
     initialTitle: String,
     initialDescription: String?,
     initialTime: LocalTime?,
     initialSoundUri: String?,
     initialPlaySound: Boolean,
+    initialShouldVibrate: Boolean,
     initialSpecificDays: List<DayOfWeek>?,
     availableDays: List<DayOfWeek>,
     isSaving: Boolean,
@@ -82,6 +78,7 @@ fun TaskDialog(
     var time by remember { mutableStateOf(initialTime) }
     var soundUri by remember { mutableStateOf(initialSoundUri) }
     var playSound by remember { mutableStateOf(initialPlaySound) }
+    var shouldVibrate by remember { mutableStateOf(initialShouldVibrate) }
     var specificDays by remember { mutableStateOf(initialSpecificDays ?: emptyList()) }
 
     var showTimePicker by remember { mutableStateOf(false) }
@@ -193,7 +190,8 @@ fun TaskDialog(
                             val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
                             intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
                             intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select alarm sound")
-                            soundUri?.let { intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(it)) }
+                            soundUri?.let { intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI,
+                                it.toUri()) }
                             ringtonePickerLauncher.launch(intent)
                         },
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
@@ -201,18 +199,24 @@ fun TaskDialog(
                         Icon(painter = painterResource(id = AppIcons.MusicNote), contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = soundUri?.let { RingtoneManager.getRingtone(context, Uri.parse(it)).getTitle(context) } ?: "Default Sound",
+                            text = soundUri?.let { RingtoneManager.getRingtone(context, it.toUri()).getTitle(context) } ?: "Default Sound",
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("Vibrate")
+                    Spacer(Modifier.weight(1f))
+                    Switch(checked = shouldVibrate, onCheckedChange = { shouldVibrate = it })
                 }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    onConfirm(title, description.ifBlank { null }, time, soundUri, playSound, specificDays)
+                    onConfirm(title, description.ifBlank { null }, time, soundUri, playSound, shouldVibrate, specificDays)
                 },
                 enabled = title.isNotBlank() && !isSaving && specificDays.isNotEmpty()
             ) {

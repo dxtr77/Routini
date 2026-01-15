@@ -4,10 +4,13 @@ import android.app.Activity
 import android.content.Intent
 import android.media.RingtoneManager
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -47,6 +50,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import com.dxtr.routini.R
 import com.dxtr.routini.ui.theme.AppIcons
 import java.time.Instant
@@ -54,13 +58,14 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StandaloneTaskDialog(
     dialogTitle: String,
     onDismiss: () -> Unit,
-    onConfirm: (String, String?, LocalDate?, LocalTime?, String?, Boolean) -> Unit,
+    onConfirm: (String, String?, LocalDate?, LocalTime?, String?, Boolean, Boolean) -> Unit,
     onDelete: (() -> Unit)?,
     initialTitle: String,
     initialDescription: String?,
@@ -68,6 +73,7 @@ fun StandaloneTaskDialog(
     initialTime: LocalTime?,
     initialSoundUri: String?,
     initialPlaySound: Boolean,
+    initialShouldVibrate: Boolean,
     isSaving: Boolean,
 ) {
     var title by remember { mutableStateOf(initialTitle) }
@@ -76,6 +82,8 @@ fun StandaloneTaskDialog(
     var time by remember { mutableStateOf(initialTime) }
     var soundUri by remember { mutableStateOf(initialSoundUri) }
     var playSound by remember { mutableStateOf(initialPlaySound) }
+    var shouldVibrate by remember { mutableStateOf(initialShouldVibrate) }
+    var isDateTimeEnabled by remember { mutableStateOf(initialDate != null) }
 
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
@@ -85,9 +93,13 @@ fun StandaloneTaskDialog(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)?.let {
-                soundUri = it.toString()
+            val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
             }
+            uri?.let { soundUri = it.toString() }
         }
     }
 
@@ -126,49 +138,126 @@ fun StandaloneTaskDialog(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(
-                        onClick = { showDatePicker = true },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(painter = painterResource(id = AppIcons.CalendarMonth), contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(date?.format(DateTimeFormatter.ofPattern("MMM dd, yyyy")) ?: "Set Date")
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    OutlinedButton(
-                        onClick = { showTimePicker = true },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(painter = painterResource(id = AppIcons.Schedule), contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(time?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: "Set Time")
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("Set Date/Time")
+                    Spacer(Modifier.weight(1f))
+                    Switch(
+                        checked = isDateTimeEnabled,
+                        onCheckedChange = {
+                            isDateTimeEnabled = it
+                            if (isDateTimeEnabled) {
+                                if (date == null) date = LocalDate.now()
+                                if (time == null) time = LocalTime.now()
+                            }
+                        }
+                    )
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Play Sound")
-                    Spacer(Modifier.weight(1f))
-                    Switch(checked = playSound, onCheckedChange = { playSound = it })
-                }
-                AnimatedVisibility(playSound) {
-                    OutlinedButton(
-                        onClick = {
-                            val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
-                            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
-                            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select alarm sound")
-                            soundUri?.let { intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(it)) }
-                            ringtonePickerLauncher.launch(intent)
-                        },
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                    ) {
-                        Icon(painter = painterResource(id = AppIcons.MusicNote), contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = soundUri?.let { RingtoneManager.getRingtone(context, Uri.parse(it)).getTitle(context) } ?: "Default Sound",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+
+                AnimatedVisibility(visible = isDateTimeEnabled) {
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                OutlinedButton(
+                                    onClick = { showDatePicker = true },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = AppIcons.CalendarMonth),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        date?.format(DateTimeFormatter.ofPattern("MMM d, yy")) ?: "Set Date",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                if (date != null) {
+                                    Icon(
+                                        painter = painterResource(id = AppIcons.Close),
+                                        contentDescription = "Clear Date",
+                                        modifier = Modifier
+                                            .align(Alignment.CenterEnd)
+                                            .padding(end = 8.dp)
+                                            .size(18.dp)
+                                            .clickable { date = null }
+                                    )
+                                }
+                            }
+                            Box(modifier = Modifier.weight(1f)) {
+                                OutlinedButton(
+                                    onClick = { showTimePicker = true },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = AppIcons.Schedule),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        time?.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)) ?: "Set Time",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                if (time != null) {
+                                    Icon(
+                                        painter = painterResource(id = AppIcons.Close),
+                                        contentDescription = "Clear Time",
+                                        modifier = Modifier
+                                            .align(Alignment.CenterEnd)
+                                            .padding(end = 8.dp)
+                                            .size(18.dp)
+                                            .clickable { time = null }
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Text("Play Sound")
+                            Spacer(Modifier.weight(1f))
+                            Switch(checked = playSound, onCheckedChange = { playSound = it })
+                        }
+                        AnimatedVisibility(playSound) {
+                            OutlinedButton(
+                                onClick = {
+                                    val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+                                    intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+                                    intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select alarm sound")
+                                    soundUri?.let { intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, it.toUri()) }
+                                    ringtonePickerLauncher.launch(intent)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = AppIcons.MusicNote),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = soundUri?.let { RingtoneManager.getRingtone(context, it.toUri()).getTitle(context) } ?: "Default Sound",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Text("Vibrate")
+                            Spacer(Modifier.weight(1f))
+                            Switch(checked = shouldVibrate, onCheckedChange = { shouldVibrate = it })
+                        }
                     }
                 }
             }
@@ -176,7 +265,9 @@ fun StandaloneTaskDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    onConfirm(title, description.ifBlank { null }, date, time, soundUri, playSound)
+                    val finalDate = if (isDateTimeEnabled) date else null
+                    val finalTime = if (isDateTimeEnabled) time else null
+                    onConfirm(title, description.ifBlank { null }, finalDate, finalTime, soundUri, playSound, shouldVibrate)
                 },
                 enabled = title.isNotBlank() && !isSaving
             ) {

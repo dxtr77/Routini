@@ -46,12 +46,10 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavController
 import com.dxtr.routini.MainViewModel
 import com.dxtr.routini.R
-import com.dxtr.routini.data.RoutineTask
 import com.dxtr.routini.data.StandaloneTask
-import com.dxtr.routini.data.Task
+import com.dxtr.routini.ui.composables.EmptyState
 import com.dxtr.routini.ui.composables.StandaloneTaskDialog
 import com.dxtr.routini.ui.composables.TaskChip
 import com.dxtr.routini.ui.theme.AppIcons
@@ -61,10 +59,10 @@ import java.time.format.FormatStyle
 
 @Composable
 fun TasksScreen(
-    navController: NavController,
     viewModel: MainViewModel = viewModel()
 ) {
-    val tasks by viewModel.tasks.collectAsState()
+    val tasks by viewModel.allTasks.collectAsState()
+
     val haptic = LocalHapticFeedback.current
     var showTaskDialog by remember { mutableStateOf(false) }
     var taskToEdit by remember { mutableStateOf<StandaloneTask?>(null) }
@@ -93,7 +91,7 @@ fun TasksScreen(
                 }
             )
         } else {
-            val groupedTasks = tasks.groupBy { it.date ?: LocalDate.MAX } // Null dates go to the end
+            val groupedTasks = tasks.groupBy { it.date ?: LocalDate.MIN }.toSortedMap() // Null dates go to the top
 
             LazyColumn(
                 modifier = Modifier
@@ -104,10 +102,10 @@ fun TasksScreen(
             ) {
                 groupedTasks.forEach { (date, tasksForDate) ->
                     item {
-                        val headerText = when {
-                            date == LocalDate.MAX -> "No Date"
-                            date == LocalDate.now() -> "Today"
-                            date == LocalDate.now().plusDays(1) -> "Tomorrow"
+                        val headerText = when (date) {
+                            LocalDate.MIN -> "No Date"
+                            LocalDate.now() -> "Today"
+                            LocalDate.now().plusDays(1) -> "Tomorrow"
                             else -> date.format(DateTimeFormatter.ofPattern("EEE, MMM dd"))
                         }
                         Text(
@@ -117,27 +115,20 @@ fun TasksScreen(
                             modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
                         )
                     }
-                    items(tasksForDate, key = { task -> "${task::class.simpleName}_${task.id}" }) { task ->
-                        when (task) {
-                            is StandaloneTask -> {
-                                StandaloneTaskItem(
-                                    task = task,
-                                    onToggle = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        viewModel.updateTaskStatus(task, !task.isDone, if (date == LocalDate.MAX) null else date)
-                                     },
-                                    onEdit = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        taskToEdit = task
-                                        showTaskDialog = true
-                                     },
-                                    onDelete = { viewModel.deleteStandaloneTask(task) }
-                                )
-                            }
-                            is RoutineTask -> {
-                                RoutineTaskItem(task = task, onToggle = {})
-                            }
-                        }
+                    items(tasksForDate, key = { task -> "standalone_${task.id}" }) { task ->
+                        StandaloneTaskItem(
+                            task = task,
+                            onToggle = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                viewModel.updateTaskStatus(task, !task.isDone, if (date == LocalDate.MIN) null else date)
+                             },
+                            onEdit = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                taskToEdit = task
+                                showTaskDialog = true
+                             },
+                            onDelete = { viewModel.deleteStandaloneTask(task) }
+                        )
                     }
                 }
             }
@@ -148,7 +139,7 @@ fun TasksScreen(
             StandaloneTaskDialog(
                 dialogTitle = if (currentTask == null) "New Task" else "Edit Task",
                 onDismiss = { showTaskDialog = false },
-                onConfirm = { title, description, date, time, soundUri, shouldPlaySound ->
+                onConfirm = { title, description, date, time, soundUri, shouldPlaySound, shouldVibrate ->
                     isSaving = true
                     if (currentTask == null) {
                         viewModel.addStandaloneTask(StandaloneTask(
@@ -157,7 +148,8 @@ fun TasksScreen(
                             date = date,
                             time = time,
                             customSoundUri = soundUri,
-                            shouldPlaySound = shouldPlaySound
+                            shouldPlaySound = shouldPlaySound,
+                            shouldVibrate = shouldVibrate
                         ))
                     } else {
                         viewModel.updateStandaloneTask(currentTask.copy(
@@ -166,11 +158,12 @@ fun TasksScreen(
                             date = date,
                             time = time,
                             customSoundUri = soundUri,
-                            shouldPlaySound = shouldPlaySound
+                            shouldPlaySound = shouldPlaySound,
+                            shouldVibrate = shouldVibrate
                         ))
                     }
-                    showTaskDialog = false
                     isSaving = false
+                    showTaskDialog = false
                 },
                 onDelete = if (currentTask != null) {
                     {
@@ -184,6 +177,7 @@ fun TasksScreen(
                 initialTime = currentTask?.time,
                 initialSoundUri = currentTask?.customSoundUri,
                 initialPlaySound = currentTask?.shouldPlaySound ?: false,
+                initialShouldVibrate = currentTask?.shouldVibrate ?: false,
                 isSaving = isSaving
             )
         }
@@ -323,9 +317,4 @@ fun StandaloneTaskItem(
             }
         }
     }
-}
-
-@Composable
-fun RoutineTaskItem(task: RoutineTask, onToggle: (Boolean) -> Unit) {
-    Text(text = "Routine Task: ${task.title}")
 }

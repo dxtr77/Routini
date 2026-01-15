@@ -70,7 +70,7 @@ fun HomeScreen(
             when (page) {
                 0 -> DashboardScreen(viewModel = viewModel)
                 1 -> RoutinesScreen(navController = navController, viewModel = viewModel)
-                2 -> TasksScreen(navController = navController, viewModel = viewModel)
+                2 -> TasksScreen(viewModel = viewModel)
             }
         }
     }

@@ -5,9 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.Build
 import android.os.Bundle
-import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -59,9 +57,9 @@ class AlarmActivity : ComponentActivity() {
 
         // 1. Wake up the screen and show over lock screen
         turnScreenOnAndKeyguard()
-        
+
         // 2. Listen for STOP action to close this screen automatically if notification is used
-        registerReceiver(finishReceiver, IntentFilter(AlarmReceiver.ACTION_STOP), Context.RECEIVER_NOT_EXPORTED)
+        registerReceiver(finishReceiver, IntentFilter(AlarmReceiver.ACTION_STOP), RECEIVER_NOT_EXPORTED)
 
         val title = intent.getStringExtra("TITLE") ?: "Alarm"
         val taskId = intent.getIntExtra(AlarmReceiver.EXTRA_TASK_ID, -1)
@@ -99,21 +97,10 @@ class AlarmActivity : ComponentActivity() {
     }
 
     private fun turnScreenOnAndKeyguard() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-        } else {
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-            )
-        }
-        with(getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                requestDismissKeyguard(this@AlarmActivity, null)
-            }
+        setShowWhenLocked(true)
+        setTurnScreenOn(true)
+        with(getSystemService(KEYGUARD_SERVICE) as KeyguardManager) {
+            requestDismissKeyguard(this@AlarmActivity, null)
         }
     }
 }
@@ -132,7 +119,7 @@ fun AlarmScreenContent(
             .background(Color.Black.copy(alpha = 0.85f)), // Dark scrim
         contentAlignment = Alignment.Center
     ) {
-        
+
         // Background Glow Effect (Optional visual flair)
         Box(
             modifier = Modifier
@@ -155,9 +142,9 @@ fun AlarmScreenContent(
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(64.dp)
             )
-            
+
             Spacer(modifier = Modifier.height(24.dp))
-            
+
             Text(
                 text = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")),
                 style = MaterialTheme.typography.displayLarge.copy(

@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dxtr.routini.MainViewModel
@@ -56,6 +58,7 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
     val tasks by viewModel.tasks.collectAsState()
+    val routines by viewModel.routines.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
     val isSaving by viewModel.isSavingTask.collectAsState()
 
@@ -71,8 +74,8 @@ fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
                 Icon(painter = painterResource(id = AppIcons.Add), contentDescription = "Add Task")
             }
         }
-    ) {
-        Column(modifier = Modifier.padding(it).padding(horizontal = 16.dp)) {
+    ) { padding ->
+        Column(modifier = Modifier.padding(padding).padding(horizontal = 16.dp)) {
             Text(
                 text = getGreeting(),
                 style = MaterialTheme.typography.headlineMedium
@@ -89,20 +92,75 @@ fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(16.dp))
-            LazyColumn {
-                items(tasks) { task ->
-                    TaskCard(
-                        task = task,
-                        onTaskStatusChanged = { changedTask, isDone ->
-                            viewModel.updateTaskStatus(changedTask, isDone, selectedDate)
-                        },
-                        onDelete = {
-                            when (task) {
-                                is RoutineTask -> viewModel.deleteRoutineTask(task)
-                                is StandaloneTask -> viewModel.deleteStandaloneTask(task)
-                            }
+
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 80.dp)
+            ) {
+                val standaloneTasks = tasks.filterIsInstance<StandaloneTask>().filter { it.date != null }
+                if (standaloneTasks.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "Tasks",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                    }
+                    items(standaloneTasks, key = { it.id }) { task ->
+                        TaskCard(
+                            task = task,
+                            onTaskStatusChanged = { changedTask, isDone ->
+                                viewModel.updateTaskStatus(changedTask, isDone, selectedDate)
+                            },
+                            onDelete = { viewModel.deleteStandaloneTask(task) }
+                        )
+                    }
+                }
+
+                val routineTasks = tasks.filterIsInstance<RoutineTask>()
+                val groupedRoutineTasks = routineTasks.groupBy { it.routineId }
+
+                groupedRoutineTasks.forEach { (routineId, tasksInRoutine) ->
+                    val routine = routines.find { it.id == routineId }
+                    if (routine != null) {
+                        item {
+                            Text(
+                                text = routine.name,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                            )
                         }
-                    )
+                        items(tasksInRoutine, key = { "routine_${it.id}" }) { task ->
+                            TaskCard(
+                                task = task,
+                                onTaskStatusChanged = { changedTask, isDone ->
+                                    viewModel.updateTaskStatus(changedTask, isDone, selectedDate)
+                                },
+                                onDelete = { viewModel.deleteRoutineTask(task) }
+                            )
+                        }
+                    }
+                }
+
+                if (tasks.isEmpty()) {
+                    item {
+                        val emptyText = if (selectedDate == LocalDate.now()) {
+                            "No tasks for today!"
+                        } else {
+                            "No tasks for this day."
+                        }
+                        Text(
+                            text = emptyText,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 32.dp).fillMaxWidth(),
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
         }
@@ -136,15 +194,16 @@ fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
         StandaloneTaskDialog(
             dialogTitle = stringResource(R.string.new_task_title),
             onDismiss = { showTaskDialog = false },
-            onConfirm = { title, desc, date, time, sound, playSound ->
+            onConfirm = { title, desc, date, time, sound, playSound, shouldVibrate ->
                 viewModel.addStandaloneTask(
                     StandaloneTask(
                         title = title,
                         description = desc,
-                        date = date ?: LocalDate.now(),
+                        date = date,
                         time = time,
                         customSoundUri = sound,
-                        shouldPlaySound = playSound
+                        shouldPlaySound = playSound,
+                        shouldVibrate = shouldVibrate
                     )
                 )
                 showTaskDialog = false
@@ -154,7 +213,8 @@ fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
             initialDate = LocalDate.now(),
             initialTime = null,
             initialSoundUri = null,
-            initialPlaySound = true,
+            initialPlaySound = false,
+            initialShouldVibrate = false,
             isSaving = isSaving,
             onDelete = {}
         )

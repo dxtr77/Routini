@@ -31,6 +31,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -38,10 +40,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -67,11 +67,10 @@ import androidx.navigation.NavController
 import com.dxtr.routini.MainViewModel
 import com.dxtr.routini.R
 import com.dxtr.routini.data.Routine
-import com.dxtr.routini.ui.composables.ComposeBottomSheet
+import com.dxtr.routini.ui.composables.EmptyState
 import com.dxtr.routini.ui.navigation.Screen
 import com.dxtr.routini.ui.theme.AppIcons
 import java.time.DayOfWeek
-import androidx.compose.material3.SwipeToDismissBoxValue
 
 @Composable
 fun RoutinesScreen(
@@ -80,7 +79,7 @@ fun RoutinesScreen(
 ) {
     val routines by viewModel.routines.collectAsState()
     val haptic = LocalHapticFeedback.current
-    var showRoutineSheet by remember { mutableStateOf(false) }
+    var showRoutineDialog by remember { mutableStateOf(false) }
     var routineToEdit by remember { mutableStateOf<Routine?>(null) }
     val context = LocalContext.current
     var showPermissionDialog by remember { mutableStateOf(false) }
@@ -106,7 +105,7 @@ fun RoutinesScreen(
             FloatingActionButton(onClick = {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 routineToEdit = null
-                showRoutineSheet = true
+                showRoutineDialog = true
             }) {
                 Icon(painter = painterResource(id = AppIcons.Add), contentDescription = stringResource(R.string.add_routine_desc))
             }
@@ -120,7 +119,7 @@ fun RoutinesScreen(
                 onActionClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     routineToEdit = null
-                    showRoutineSheet = true
+                    showRoutineDialog = true
                 }
             )
         } else {
@@ -140,7 +139,7 @@ fun RoutinesScreen(
                         },
                         onEdit = { 
                             routineToEdit = routine
-                            showRoutineSheet = true
+                            showRoutineDialog = true
                         },
                         onDelete = { viewModel.deleteRoutine(routine) }
                     )
@@ -148,28 +147,25 @@ fun RoutinesScreen(
             }
         }
 
-        if (showRoutineSheet) {
-            ComposeBottomSheet(onDismiss = { showRoutineSheet = false }) {
-                RoutineBottomSheetContent(
-                    routine = routineToEdit,
-                    onConfirm = { name, days ->
-                        if (routineToEdit == null) {
-                            viewModel.addRoutine(Routine(name = name, themeColor = android.graphics.Color.BLUE, recurringDays = days))
-                        } else {
-                            viewModel.updateRoutine(routineToEdit!!.copy(name = name, recurringDays = days))
-                        }
-                        showRoutineSheet = false
-                    },
-                    onDelete = {
-                        routineToEdit?.let { viewModel.deleteRoutine(it) }
-                        showRoutineSheet = false
-                    },
-                    onDismiss = { showRoutineSheet = false }
-                )
-            }
+        if (showRoutineDialog) {
+            RoutineDialog(
+                routine = routineToEdit,
+                onConfirm = { name, days ->
+                    if (routineToEdit == null) {
+                        viewModel.addRoutine(Routine(name = name, themeColor = android.graphics.Color.BLUE, recurringDays = days))
+                    } else {
+                        viewModel.updateRoutine(routineToEdit!!.copy(name = name, recurringDays = days))
+                    }
+                    showRoutineDialog = false
+                },
+                onDelete = {
+                    routineToEdit?.let { viewModel.deleteRoutine(it) }
+                    showRoutineDialog = false
+                },
+                onDismiss = { showRoutineDialog = false }
+            )
         }
         
-        // Permission Dialog Code (Same as before)
         if (showPermissionDialog) {
              AlertDialog(
                 onDismissRequest = { showPermissionDialog = false },
@@ -207,12 +203,30 @@ fun RoutinesScreen(
     }
 }
 
-// DayIndicator Composable (Same as before)
+@Composable
+fun SmartDayIndicator(activeDays: List<DayOfWeek>) {
+    val isEveryDay = activeDays.size == 7
+    val isWeekdays = activeDays.size == 5 && activeDays.containsAll(
+        listOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY)
+    )
+    val isWeekends = activeDays.size == 2 && activeDays.containsAll(
+        listOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY)
+    )
+
+    val text = when {
+        isEveryDay -> "Every Day"
+        isWeekdays -> "Weekdays"
+        isWeekends -> "Weekends"
+        else -> activeDays.joinToString { it.name.take(3).lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() } } 
+    }
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
 @Composable
 fun DayIndicator(activeDays: List<DayOfWeek>) {
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         val days = listOf("M", "T", "W", "T", "F", "S", "S")
-        val allDays = DayOfWeek.entries
+        val allDays = DayOfWeek.values()
 
         days.forEachIndexed { index, label ->
             val isActive = activeDays.contains(allDays[index])
@@ -251,93 +265,85 @@ fun ModernRoutineCard(
     val totalTasks = tasks.size
     val progress = if (totalTasks > 0) completedTasks.toFloat() / totalTasks else 0f
     val animatedProgress by animateFloatAsState(targetValue = progress, label = "progressAnimation")
+    var showMenu by remember { mutableStateOf(false) }
 
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = {
-            if (it == SwipeToDismissBoxValue.EndToStart) {
-                onDelete()
-                true
-            } else {
-                false
-            }
-        }
-    )
-
-    SwipeToDismissBox(
-        state = dismissState,
-        enableDismissFromEndToStart = true,
-        backgroundContent = {
-            val color = when (dismissState.targetValue) {
-                SwipeToDismissBoxValue.EndToStart -> Color.Red
-                else -> Color.Transparent
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(color)
-                    .padding(horizontal = 20.dp),
-                contentAlignment = Alignment.CenterEnd
-            ) {
-                Icon(
-                    painter = painterResource(id = AppIcons.Delete),
-                    contentDescription = null,
-                    tint = Color.White
-                )
-            }
-        }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onNavigateToDetail() },
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Card(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onNavigateToDetail() }, // Navigate on click
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Keep the same Row layout for Title, Progress, and Days
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = routine.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    DayIndicator(routine.recurringDays)
-                }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = routine.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                SmartDayIndicator(routine.recurringDays)
+            }
 
-                IconButton(onClick = onEdit) {
-                    Icon(painter = painterResource(id = AppIcons.Edit), contentDescription = "Edit Routine")
+            if (progress > 0) {
+                if (progress == 1f) {
+                    Icon(
+                        painter = painterResource(id = AppIcons.CheckCircle),
+                        contentDescription = "Completed",
+                        tint = Color.Green,
+                        modifier = Modifier.size(56.dp)
+                    )
+                } else {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(56.dp)) {
+                        CircularProgressIndicator(
+                            progress = animatedProgress,
+                            modifier = Modifier.fillMaxSize(),
+                            strokeWidth = 6.dp,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                        )
+                        Text(
+                            text = "${(animatedProgress * 100).toInt()}%",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
+            } 
 
-                // Progress Circle
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(56.dp)) {
-                    CircularProgressIndicator(
-                        progress = animatedProgress,
-                        modifier = Modifier.fillMaxSize(),
-                        strokeWidth = 6.dp,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            Box {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(painter = painterResource(id = AppIcons.MoreVert), contentDescription = "More Options")
+                }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Edit") },
+                        onClick = { 
+                            onEdit()
+                            showMenu = false 
+                        },
+                        leadingIcon = { Icon(painterResource(id = AppIcons.Edit), contentDescription = null) }
                     )
-                    Text(
-                        text = "${(animatedProgress * 100).toInt()}%",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold
+                    DropdownMenuItem(
+                        text = { Text("Delete") },
+                        onClick = { 
+                            onDelete()
+                            showMenu = false
+                        },
+                        leadingIcon = { Icon(painterResource(id = AppIcons.Delete), contentDescription = null) }
                     )
                 }
-                 Spacer(modifier = Modifier.width(8.dp))
-                 Icon(painter = painterResource(id = AppIcons.ArrowForward), contentDescription = "Open", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
 }
 
 @Composable
-fun RoutineBottomSheetContent(
+fun RoutineDialog(
     routine: Routine?,
     onConfirm: (String, List<DayOfWeek>) -> Unit,
     onDelete: () -> Unit,
@@ -345,20 +351,63 @@ fun RoutineBottomSheetContent(
 ) {
     val isEditing = routine != null
     var name by remember { mutableStateOf(routine?.name ?: "") }
-    var selectedDays by remember { mutableStateOf(routine?.recurringDays ?: DayOfWeek.values().toList()) }
+    var selectedDays by remember { mutableStateOf(routine?.recurringDays ?: emptyList()) }
     var isSaving by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.padding(16.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
             Text(
                 text = if (isEditing) "Edit Routine" else stringResource(R.string.new_routine_title),
                 style = MaterialTheme.typography.titleLarge
             )
-            if (isEditing) {
+        },
+        text = {
+            RoutineDialogContent(
+                name = name,
+                onNameChange = { name = it },
+                selectedDays = selectedDays,
+                onSelectedDaysChange = { selectedDays = it },
+                isEditing = isEditing,
+                onDelete = onDelete
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (name.isNotBlank() && !isSaving) {
+                        isSaving = true
+                        onConfirm(name, selectedDays)
+                    }
+                },
+                enabled = name.isNotBlank() && selectedDays.isNotEmpty() && !isSaving
+            ) {
+                Text(stringResource(R.string.save_action))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel_action))
+            }
+        }
+    )
+}
+
+@Composable
+fun RoutineDialogContent(
+    name: String,
+    onNameChange: (String) -> Unit,
+    selectedDays: List<DayOfWeek>,
+    onSelectedDaysChange: (List<DayOfWeek>) -> Unit,
+    isEditing: Boolean,
+    onDelete: () -> Unit
+) {
+    Column {
+        if (isEditing) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
                 IconButton(onClick = onDelete) {
                     Icon(
                         painter = painterResource(id = AppIcons.Delete),
@@ -368,10 +417,9 @@ fun RoutineBottomSheetContent(
                 }
             }
         }
-        Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(
             value = name,
-            onValueChange = { name = it },
+            onValueChange = onNameChange,
             label = { Text(stringResource(R.string.routine_name_label)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
@@ -390,8 +438,9 @@ fun RoutineBottomSheetContent(
                             if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
                         )
                         .clickable {
-                            selectedDays =
+                            onSelectedDaysChange(
                                 if (isSelected) selectedDays - day else selectedDays + day
+                            )
                         },
                     contentAlignment = Alignment.Center
                 ) {
@@ -402,22 +451,6 @@ fun RoutineBottomSheetContent(
                     )
                 }
             }
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = {
-                if (name.isNotBlank() && !isSaving) {
-                    isSaving = true
-                    onConfirm(name, selectedDays)
-                }
-            },
-            enabled = name.isNotBlank() && selectedDays.isNotEmpty() && !isSaving,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(stringResource(R.string.save_action))
-        }
-        TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.cancel_action))
         }
     }
 }

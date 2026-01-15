@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -39,6 +38,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val routines: StateFlow<List<Routine>> = routineDao.getAllRoutines()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    private val allStandaloneTasks: Flow<List<StandaloneTask>> = standaloneTaskDao.getAllStandaloneTasks()
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val tasks: StateFlow<List<Task>> = selectedDate.flatMapLatest { date ->
         val historyFlow = routineHistoryDao.getHistoryForDate(date)
@@ -48,7 +49,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         routinesForDayFlow.flatMapLatest { routines ->
             val routineTaskFlows = routines.map { getTasksForRoutine(it.id) }
             val combinedRoutineTasksFlow = if (routineTaskFlows.isEmpty()) {
-                flowOf(emptyList<RoutineTask>())
+                flowOf(emptyList())
             } else {
                 combine(routineTaskFlows) { tasksArray ->
                     tasksArray.toList().flatten().filter { task ->
@@ -75,6 +76,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val allTasks: StateFlow<List<StandaloneTask>> = allStandaloneTasks
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
 
     fun onNextDay() {
@@ -104,19 +108,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getTasksForRoutine(routineId: Int): Flow<List<RoutineTask>> {
         return routineDao.getTasksForRoutine(routineId)
-    }
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    fun getTasksForRoutineOnDate(routineId: Int, date: LocalDate): Flow<List<RoutineTask>> {
-        val historyFlow = routineHistoryDao.getHistoryForDate(date)
-        return routineDao.getTasksForRoutine(routineId).flatMapLatest { tasks ->
-            historyFlow.map { history ->
-                tasks.map { task ->
-                    val isDone = if (date == LocalDate.now()) task.isDone else history.any { it.taskId == task.id }
-                    task.copy(isDone = isDone)
-                }
-            }
-        }
     }
 
     // Routine Tasks

@@ -5,19 +5,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -35,10 +37,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.dxtr.routini.MainViewModel
 import com.dxtr.routini.R
+import com.dxtr.routini.data.Routine
 import com.dxtr.routini.data.RoutineTask
 import com.dxtr.routini.ui.composables.QuickTaskItem
 import com.dxtr.routini.ui.composables.TaskDialog
 import com.dxtr.routini.ui.theme.AppIcons
+import java.time.DayOfWeek
 import java.time.LocalDate
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,20 +55,20 @@ fun RoutineDetailScreen(
     val routines by viewModel.routines.collectAsState()
     val routine = routines.find { it.id == routineId }
     val selectedDate by viewModel.selectedDate.collectAsState()
-    val tasks by viewModel.getTasksForRoutineOnDate(routineId, selectedDate).collectAsState(initial = emptyList())
+    val allTasks by viewModel.getTasksForRoutine(routineId).collectAsState(initial = emptyList())
     val isSaving by viewModel.isSavingTask.collectAsState()
 
-    // Handle loading or deleted routine
     if (routine == null) {
         return
     }
 
-    val activeDays = routine.recurringDays.sorted()
-    val selectedDayIndex = activeDays.indexOf(selectedDate.dayOfWeek).coerceAtLeast(0)
-    val currentDay = if (activeDays.isNotEmpty()) activeDays.getOrElse(selectedDayIndex) { activeDays[0] } else null
-
+    var selectedTab by remember { mutableStateOf(0) }
     var showTaskDialog by remember { mutableStateOf(false) }
     var taskToEdit by remember { mutableStateOf<RoutineTask?>(null) }
+    var showRoutineDialog by remember { mutableStateOf(false) }
+
+    val today = LocalDate.now()
+    val isTodayInActiveDays = routine.recurringDays.contains(today.dayOfWeek)
 
     Scaffold(
         topBar = {
@@ -74,12 +78,17 @@ fun RoutineDetailScreen(
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(painter = painterResource(id = AppIcons.ArrowBack), contentDescription = "Back")
                     }
+                },
+                actions = {
+                    IconButton(onClick = { showRoutineDialog = true }) {
+                        Icon(painter = painterResource(id = AppIcons.Edit), contentDescription = "Edit Routine")
+                    }
                 }
             )
         },
         floatingActionButton = {
             FloatingActionButton(onClick = {
-                taskToEdit = null // Ensure we are adding a new task
+                taskToEdit = null
                 showTaskDialog = true
             }) {
                 Icon(painter = painterResource(id = AppIcons.Add), contentDescription = "Add Task")
@@ -87,65 +96,61 @@ fun RoutineDetailScreen(
         }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
-
-            if (activeDays.isNotEmpty()) {
-                ScrollableTabRow(
-                    selectedTabIndex = selectedDayIndex,
-                    edgePadding = 16.dp,
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.primary,
-                    indicator = { tabPositions ->
-                        TabRowDefaults.SecondaryIndicator(
-                            Modifier.tabIndicatorOffset(tabPositions[selectedDayIndex]),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                ) {
-                    activeDays.forEachIndexed { index, day ->
-                        Tab(
-                            selected = selectedDayIndex == index,
-                            onClick = {
-                                val newDay = activeDays[index]
-                                val currentDayOfWeek = selectedDate.dayOfWeek
-                                val daysToAdd = newDay.value - currentDayOfWeek.value
-                                viewModel.onDateSelected(selectedDate.plusDays(daysToAdd.toLong()))
-                            },
-                            text = { Text(day.name.take(3)) } // "MON", "TUE"
-                        )
-                    }
-                }
+            TabRow(selectedTabIndex = selectedTab) {
+                Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Today") })
+                Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("All Tasks") })
             }
 
-            val filteredTasks = tasks.filter { task ->
-                if (task.date != null) {
-                    task.date == selectedDate
-                } else {
-                    task.specificDays.isNullOrEmpty() || task.specificDays.contains(selectedDate.dayOfWeek)
+            when (selectedTab) {
+                0 -> {
+                    if (isTodayInActiveDays) {
+                        val tasksForToday = allTasks.filter { it.specificDays.isNullOrEmpty() || it.specificDays.contains(today.dayOfWeek) }
+                        if (tasksForToday.isEmpty()) {
+                            Box(modifier = Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+                                Text("No tasks for today", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        } else {
+                            LazyColumn(
+                                contentPadding = PaddingValues(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(tasksForToday, key = { it.id }) { task ->
+                                    QuickTaskItem(
+                                        task = task,
+                                        onToggle = { viewModel.updateTaskStatus(task, !task.isDone, selectedDate) },
+                                        onEdit = {
+                                            taskToEdit = task
+                                            showTaskDialog = true
+                                        },
+                                        onDelete = { viewModel.deleteRoutineTask(task) }
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        RestDayCard(routine = routine) {
+                            val daysToAdd = it.value - today.dayOfWeek.value
+                            val finalDaysToAdd = if (daysToAdd < 0) daysToAdd + 7 else daysToAdd
+                            viewModel.onDateSelected(today.plusDays(finalDaysToAdd.toLong()))
+                        }
+                    }
                 }
-            }.sortedBy { it.time }
-
-            if (filteredTasks.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize().padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("No tasks for this day", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(filteredTasks, key = { it.id }) { task ->
-                        QuickTaskItem(
-                            task = task,
-                            onToggle = { viewModel.updateTaskStatus(task, !task.isDone, selectedDate) },
-                            onEdit = {
-                                taskToEdit = task
-                                showTaskDialog = true
-                            },
-                            onDelete = { viewModel.deleteRoutineTask(task) }
-                        )
+                1 -> {
+                    LazyColumn(
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(allTasks, key = { "all_${it.id}" }) { task ->
+                            QuickTaskItem(
+                                task = task,
+                                onToggle = { viewModel.updateTaskStatus(task, !task.isDone, selectedDate) },
+                                onEdit = {
+                                    taskToEdit = task
+                                    showTaskDialog = true
+                                },
+                                onDelete = { viewModel.deleteRoutineTask(task) }
+                            )
+                        }
                     }
                 }
             }
@@ -162,28 +167,29 @@ fun RoutineDetailScreen(
             initialDescription = currentTask?.description,
             initialTime = currentTask?.time,
             initialSoundUri = currentTask?.customSoundUri,
-            initialPlaySound = currentTask?.shouldPlaySound ?: true,
-            initialSpecificDays = currentTask?.specificDays ?: (if (currentDay != null) listOf(currentDay) else emptyList()),
+            initialPlaySound = currentTask?.shouldPlaySound ?: false,
+            initialShouldVibrate = currentTask?.shouldVibrate ?: false,
+            initialSpecificDays = currentTask?.specificDays ?: emptyList(),
             availableDays = routine.recurringDays,
             isSaving = isSaving,
             onDismiss = { showTaskDialog = false },
-            onConfirm = { title, desc, time, sound, playSound, specificDays ->
+            onConfirm = { title, desc, time, sound, playSound, shouldVibrate, specificDays ->
                 val taskData = currentTask?.copy(
                     title = title,
                     description = desc,
-                    date = null,
                     time = time,
                     customSoundUri = sound,
                     shouldPlaySound = playSound,
+                    shouldVibrate = shouldVibrate,
                     specificDays = specificDays
                 ) ?: RoutineTask(
                     routineId = routine.id,
                     title = title,
                     description = desc,
-                    date = null,
                     time = time,
                     customSoundUri = sound,
                     shouldPlaySound = playSound,
+                    shouldVibrate = shouldVibrate,
                     specificDays = specificDays
                 )
 
@@ -201,5 +207,43 @@ fun RoutineDetailScreen(
                 }
             } else null
         )
+    }
+
+    if (showRoutineDialog) {
+        RoutineDialog(
+            routine = routine,
+            onConfirm = { name, days ->
+                viewModel.updateRoutine(routine.copy(name = name, recurringDays = days))
+                showRoutineDialog = false
+            },
+            onDelete = {
+                viewModel.deleteRoutine(routine)
+                showRoutineDialog = false
+                navController.popBackStack()
+            },
+            onDismiss = { showRoutineDialog = false }
+        )
+    }
+}
+
+@Composable
+fun RestDayCard(routine: Routine, onStartEarly: (DayOfWeek) -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Rest Day", style = MaterialTheme.typography.titleLarge)
+            Text("No tasks scheduled for today.", style = MaterialTheme.typography.bodyMedium)
+            val nextRunDay = routine.recurringDays.firstOrNull { it > LocalDate.now().dayOfWeek } ?: routine.recurringDays.firstOrNull()
+            if (nextRunDay != null) {
+                Text("Next session: ${nextRunDay.name.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }}", style = MaterialTheme.typography.bodyMedium)
+                Button(onClick = { onStartEarly(nextRunDay) }) {
+                    Text("Start ${nextRunDay.name.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }}'s Routine Now")
+                }
+            }
+        }
     }
 }

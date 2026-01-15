@@ -1,5 +1,6 @@
 package com.dxtr.routini.receiver
 
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -7,7 +8,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
-import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.dxtr.routini.R
@@ -33,9 +33,8 @@ class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val taskId = intent.getIntExtra(EXTRA_TASK_ID, -1)
         val taskType = intent.getStringExtra(EXTRA_TASK_TYPE)
-        val action = intent.action
 
-        when (action) {
+        when (intent.action) {
             ACTION_STOP -> {
                 val serviceIntent = Intent(context, RoutiniService::class.java).apply {
                     this.action = RoutiniService.ACTION_STOP
@@ -100,6 +99,7 @@ class AlarmReceiver : BroadcastReceiver() {
         }
     }
 
+    @SuppressLint("FullScreenIntentPolicy")
     private fun showNotification(
         context: Context, 
         title: String, 
@@ -110,20 +110,18 @@ class AlarmReceiver : BroadcastReceiver() {
         val channelId = "RoutiniAlarmChannel"
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Routini Alarms", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Notifications for scheduled tasks"
-                enableVibration(true)
-                setBypassDnd(true)
-                if (playSound) {
-                    val audioAttributes = AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .build()
-                    setSound(null, audioAttributes)
-                }
+        val channel = NotificationChannel(channelId, "Routini Alarms", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Notifications for scheduled tasks"
+            enableVibration(true)
+            setBypassDnd(true)
+            if (playSound) {
+                val audioAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .build()
+                setSound(null, audioAttributes)
             }
-            notificationManager.createNotificationChannel(channel)
         }
+        notificationManager.createNotificationChannel(channel)
         
         val fullScreenIntent = Intent(context, AlarmActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -139,12 +137,12 @@ class AlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val doneIntent = Intent(context, AlarmReceiver::class.java).apply {
+        val doneIntent = Intent(context, AlarmActivity::class.java).apply {
             action = ACTION_MARK_DONE
             putExtra(EXTRA_TASK_ID, taskId)
             putExtra(EXTRA_TASK_TYPE, taskType)
         }
-        val donePendingIntent = PendingIntent.getBroadcast(
+        val donePendingIntent = PendingIntent.getActivity(
             context,
             taskId * 100, 
             doneIntent,

@@ -10,4 +10,5 @@ interface Task {
     val time: LocalTime?
     val date: LocalDate?
     val isDone: Boolean
+    val shouldVibrate: Boolean
 }

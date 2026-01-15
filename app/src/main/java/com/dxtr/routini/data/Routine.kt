@@ -10,5 +10,5 @@ data class Routine(
     val name: String,
     val themeColor: Int, // Color int
     val isCompleted: Boolean = false,
-    val recurringDays: List<DayOfWeek> = DayOfWeek.values().toList()
+    val recurringDays: List<DayOfWeek> = DayOfWeek.entries
 )

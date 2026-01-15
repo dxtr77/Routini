@@ -28,6 +28,7 @@ data class RoutineTask(
     val customSoundUri: String? = null,
     override val isDone: Boolean = false,
     val shouldPlaySound: Boolean = false,
+    override val shouldVibrate: Boolean = false,
     // NEW: If null, follows Routine days. If set, runs only on these days.
     val specificDays: List<DayOfWeek>? = null
 ) : Task

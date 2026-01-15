@@ -14,5 +14,6 @@ data class StandaloneTask(
     override val time: LocalTime? = null,
     val customSoundUri: String? = null,
     override val isDone: Boolean = false,
-    val shouldPlaySound: Boolean = false
+    val shouldPlaySound: Boolean = false,
+    override val shouldVibrate: Boolean = false
 ) : Task

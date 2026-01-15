@@ -8,8 +8,6 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
-import java.time.DayOfWeek
-
 @Dao
 interface RoutineDao {
     @Query("SELECT * FROM routines")
@@ -53,7 +51,7 @@ interface RoutineDao {
 
     @Query("UPDATE routine_tasks SET isDone = 0")
     suspend fun resetAllTasks()
-    
+
     @Delete
     suspend fun deleteRoutineTask(task: RoutineTask)
 
