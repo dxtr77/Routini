@@ -19,4 +19,6 @@ object AppIcons {
     val ArrowForward = R.drawable.baseline_arrow_forward_24
     val Warning = R.drawable.outline_warning_24
     val ArrowBack = R.drawable.baseline_arrow_back_24
+    val ArrowDropDown = R.drawable.baseline_arrow_drop_down_24
+    val Check = R.drawable.baseline_check_24
 }

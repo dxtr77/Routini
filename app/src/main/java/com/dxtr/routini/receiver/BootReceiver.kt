@@ -5,28 +5,41 @@ import android.content.Context
 import android.content.Intent
 import com.dxtr.routini.data.AppDatabase
 import com.dxtr.routini.utils.AlarmScheduler
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == "android.intent.action.BOOT_COMPLETED") {
-            val database = AppDatabase.getDatabase(context)
-            val routineDao = database.routineDao()
-            val standaloneTaskDao = database.standaloneTaskDao()
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
+            val pendingResult = goAsync()
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val db = AppDatabase.getDatabase(context)
+                    val routineDao = db.routineDao()
+                    val standaloneTaskDao = db.standaloneTaskDao()
 
-            GlobalScope.launch {
-                val allRoutineTasks = routineDao.getAllRoutineTasks()
-                allRoutineTasks.forEach { task ->
-                    // Assuming you have a way to get the recurring days for a routine task
-                    // For now, passing null, which means it will be treated as a daily alarm
-                    AlarmScheduler.scheduleRoutineTaskAlarm(context, task, null)
-                }
+                    // Reschedule Routine Tasks
+                    val routines = routineDao.getAllRoutinesSuspend()
+                    routines.forEach { routine ->
+                        val tasks = routineDao.getTasksForRoutineSuspend(routine.id)
+                        tasks.forEach { task ->
+                            if (task.time != null) {
+                                AlarmScheduler.scheduleRoutineTaskAlarm(context, task, routine.recurringDays)
+                            }
+                        }
+                    }
 
-                val allStandaloneTasks = standaloneTaskDao.getAllStandaloneTasksSync()
-                allStandaloneTasks.forEach { task ->
-                    AlarmScheduler.scheduleStandaloneTaskAlarm(context, task)
+                    // Reschedule Standalone Tasks
+                    val standaloneTasks = standaloneTaskDao.getAllStandaloneTasksSuspend()
+                    standaloneTasks.forEach { task ->
+                        if (task.time != null && !task.isDone) {
+                            AlarmScheduler.scheduleStandaloneTaskAlarm(context, task)
+                        }
+                    }
+                } finally {
+                    pendingResult.finish()
                 }
             }
         }

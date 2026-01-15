@@ -7,14 +7,15 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
 @Database(
-    entities = [Routine::class, RoutineTask::class, StandaloneTask::class],
-    version = 6,
+    entities = [Routine::class, RoutineTask::class, StandaloneTask::class, RoutineHistory::class],
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun routineDao(): RoutineDao
     abstract fun standaloneTaskDao(): StandaloneTaskDao
+    abstract fun routineHistoryDao(): RoutineHistoryDao
 
     companion object {
         @Volatile

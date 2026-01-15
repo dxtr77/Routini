@@ -126,8 +126,7 @@ fun StandaloneTaskDialog(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Date and Time pickers
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(
                         onClick = { showDatePicker = true },
                         modifier = Modifier.weight(1f)
@@ -136,6 +135,7 @@ fun StandaloneTaskDialog(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(date?.format(DateTimeFormatter.ofPattern("MMM dd, yyyy")) ?: "Set Date")
                     }
+                    Spacer(modifier = Modifier.width(8.dp))
                     OutlinedButton(
                         onClick = { showTimePicker = true },
                         modifier = Modifier.weight(1f)
@@ -145,26 +145,11 @@ fun StandaloneTaskDialog(
                         Text(time?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: "Set Time")
                     }
                 }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    if (date != null) {
-                        IconButton(onClick = { date = null }) {
-                            Icon(painter = painterResource(id = AppIcons.Close), contentDescription = "Clear Date")
-                        }
-                    }
-                    if (time != null) {
-                        IconButton(onClick = { time = null }) {
-                            Icon(painter = painterResource(id = AppIcons.Close), contentDescription = "Clear Time")
-                        }
-                    }
-                }
-
-
                 Spacer(modifier = Modifier.height(16.dp))
-                // Sound picker
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Switch(checked = playSound, onCheckedChange = { playSound = it })
-                    Spacer(Modifier.width(8.dp))
                     Text("Play Sound")
+                    Spacer(Modifier.weight(1f))
+                    Switch(checked = playSound, onCheckedChange = { playSound = it })
                 }
                 AnimatedVisibility(playSound) {
                     OutlinedButton(
@@ -175,7 +160,7 @@ fun StandaloneTaskDialog(
                             soundUri?.let { intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(it)) }
                             ringtonePickerLauncher.launch(intent)
                         },
-                        modifier = Modifier.padding(top = 8.dp)
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                     ) {
                         Icon(painter = painterResource(id = AppIcons.MusicNote), contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
@@ -190,7 +175,9 @@ fun StandaloneTaskDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(title, description.ifBlank { null }, date, time, soundUri, playSound) },
+                onClick = {
+                    onConfirm(title, description.ifBlank { null }, date, time, soundUri, playSound)
+                },
                 enabled = title.isNotBlank() && !isSaving
             ) {
                 if (isSaving) {
@@ -234,15 +221,19 @@ fun StandaloneTaskDialog(
     }
 
     if (showTimePicker) {
-        val timePickerState = rememberTimePickerState(
-            initialHour = time?.hour ?: 0,
-            initialMinute = time?.minute ?: 0
-        )
-        TimePickerDialog(
+        val timeState = rememberTimePickerState(initialHour = time?.hour ?: 0, initialMinute = time?.minute ?: 0)
+        AlertDialog(
             onDismissRequest = { showTimePicker = false },
+            title = { Text("Select Time") },
+            text = {
+                TimePicker(
+                    state = timeState,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
-                    time = LocalTime.of(timePickerState.hour, timePickerState.minute)
+                    time = LocalTime.of(timeState.hour, timeState.minute)
                     showTimePicker = false
                 }) {
                     Text("OK")
@@ -252,27 +243,7 @@ fun StandaloneTaskDialog(
                 TextButton(onClick = { showTimePicker = false }) {
                     Text("Cancel")
                 }
-            },
-            content = {
-                TimePicker(state = timePickerState)
             }
         )
     }
-}
-
-
-@Composable
-private fun TimePickerDialog(
-    onDismissRequest: () -> Unit,
-    confirmButton: @Composable () -> Unit,
-    dismissButton: @Composable () -> Unit,
-    content: @Composable () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismissRequest,
-        title = { Text("Select Time") },
-        text = content,
-        confirmButton = confirmButton,
-        dismissButton = dismissButton
-    )
 }

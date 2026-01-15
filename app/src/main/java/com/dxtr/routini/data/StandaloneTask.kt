@@ -7,12 +7,12 @@ import java.time.LocalTime
 
 @Entity(tableName = "standalone_tasks")
 data class StandaloneTask(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val title: String,
-    val description: String? = null,
-    val date: LocalDate? = null,
-    val time: LocalTime? = null,
+    @PrimaryKey(autoGenerate = true) override val id: Int = 0,
+    override val title: String,
+    override val description: String? = null,
+    override val date: LocalDate? = null,
+    override val time: LocalTime? = null,
     val customSoundUri: String? = null,
-    val isDone: Boolean = false,
+    override val isDone: Boolean = false,
     val shouldPlaySound: Boolean = false
-)
+) : Task

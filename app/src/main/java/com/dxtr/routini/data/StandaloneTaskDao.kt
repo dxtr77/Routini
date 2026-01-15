@@ -7,14 +7,18 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
+import java.time.LocalDate
 
 @Dao
 interface StandaloneTaskDao {
-    @Query("SELECT * FROM standalone_tasks ORDER BY time ASC")
+    @Query("SELECT * FROM standalone_tasks ORDER BY date ASC, time ASC")
     fun getAllStandaloneTasks(): Flow<List<StandaloneTask>>
 
-    @Query("SELECT * FROM standalone_tasks")
-    fun getAllStandaloneTasksSync(): List<StandaloneTask>
+    @Query("SELECT * FROM standalone_tasks ORDER BY date ASC, time ASC")
+    suspend fun getAllStandaloneTasksSuspend(): List<StandaloneTask>
+
+    @Query("SELECT * FROM standalone_tasks WHERE date = :date ORDER BY time ASC")
+    fun getStandaloneTasksForDate(date: LocalDate): Flow<List<StandaloneTask>>
 
     @Query("SELECT * FROM standalone_tasks WHERE id = :id")
     suspend fun getTaskById(id: Int): StandaloneTask?
@@ -24,6 +28,9 @@ interface StandaloneTaskDao {
 
     @Update
     suspend fun update(task: StandaloneTask)
+
+    @Query("UPDATE standalone_tasks SET isDone = 0")
+    suspend fun resetAllTasks()
 
     @Delete
     suspend fun deleteStandaloneTask(task: StandaloneTask)

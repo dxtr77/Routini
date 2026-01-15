@@ -65,7 +65,8 @@ class AlarmReceiver : BroadcastReceiver() {
                                     task?.let { db.routineDao().updateRoutineTask(it.copy(isDone = true)) }
                                 }
                                 "STANDALONE" -> {
-                                     val task = db.standaloneTaskDao().getTaskById(taskId)
+                                     val standaloneTaskId = taskId - 1000000 // Subtract offset
+                                     val task = db.standaloneTaskDao().getTaskById(standaloneTaskId)
                                      task?.let { db.standaloneTaskDao().update(it.copy(isDone = true)) }
                                 }
                             }

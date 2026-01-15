@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
 import java.time.DayOfWeek
+import java.time.LocalDate
 import java.time.LocalTime
 
 @Entity(
@@ -18,14 +19,15 @@ import java.time.LocalTime
     ]
 )
 data class RoutineTask(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    @PrimaryKey(autoGenerate = true) override val id: Int = 0,
     val routineId: Int,
-    val title: String,
-    val description: String? = null,
-    val time: LocalTime? = null,
+    override val title: String,
+    override val description: String? = null,
+    override val time: LocalTime? = null,
+    override val date: LocalDate? = null,
     val customSoundUri: String? = null,
-    val isDone: Boolean = false,
+    override val isDone: Boolean = false,
     val shouldPlaySound: Boolean = false,
     // NEW: If null, follows Routine days. If set, runs only on these days.
     val specificDays: List<DayOfWeek>? = null
-)
+) : Task

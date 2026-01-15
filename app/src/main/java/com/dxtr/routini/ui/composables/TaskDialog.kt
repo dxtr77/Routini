@@ -1,10 +1,12 @@
 package com.dxtr.routini.ui.composables
 
+import android.app.Activity
 import android.content.Intent
 import android.media.RingtoneManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,14 +24,21 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,37 +55,47 @@ import androidx.compose.ui.unit.dp
 import com.dxtr.routini.R
 import com.dxtr.routini.ui.theme.AppIcons
 import java.time.DayOfWeek
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskDialog(
     dialogTitle: String,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, String, String, Boolean, List<DayOfWeek>) -> Unit,
-    initialTitle: String = "",
-    initialDescription: String = "",
-    initialTime: String = "",
-    initialSoundUri: String = "",
-    initialPlaySound: Boolean = true,
-    initialSpecificDays: List<DayOfWeek> = emptyList(),
-    availableDays: List<DayOfWeek> = emptyList(),
-    onDelete: (() -> Unit)? = null
+    onConfirm: (String, String?, LocalTime?, String?, Boolean, List<DayOfWeek>?) -> Unit,
+    onDelete: (() -> Unit)?,
+    initialTitle: String,
+    initialDescription: String?,
+    initialTime: LocalTime?,
+    initialSoundUri: String?,
+    initialPlaySound: Boolean,
+    initialSpecificDays: List<DayOfWeek>?,
+    availableDays: List<DayOfWeek>,
+    isSaving: Boolean,
 ) {
     var title by remember { mutableStateOf(initialTitle) }
-    var description by remember { mutableStateOf(initialDescription) }
+    var description by remember { mutableStateOf(initialDescription ?: "") }
     var time by remember { mutableStateOf(initialTime) }
     var soundUri by remember { mutableStateOf(initialSoundUri) }
     var playSound by remember { mutableStateOf(initialPlaySound) }
-    var specificDays by remember { mutableStateOf(initialSpecificDays) }
+    var specificDays by remember { mutableStateOf(initialSpecificDays ?: emptyList()) }
+
+    var showTimePicker by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     val ringtonePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult(),
-        onResult = { result ->
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
             result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)?.let {
                 soundUri = it.toString()
             }
         }
-    )
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -112,75 +131,96 @@ fun TaskDialog(
                     maxLines = 3
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                OutlinedTextField(
-                    value = time,
-                    onValueChange = { time = it },
-                    label = { Text(stringResource(R.string.task_time_label)) },
-                    placeholder = { Text("HH:MM") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(16.dp))
 
-                Text(stringResource(R.string.task_days_label), style = MaterialTheme.typography.labelLarge)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceAround
-                ) {
-                    availableDays.forEach { day ->
-                        val isSelected = specificDays.contains(day)
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (isSelected) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.surfaceVariant
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { showTimePicker = true },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(painter = painterResource(id = AppIcons.Schedule), contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(time?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: "Set Time")
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    if (time != null) {
+                        IconButton(onClick = { time = null }) {
+                            Icon(painter = painterResource(id = AppIcons.Close), contentDescription = "Clear Time")
+                        }
+                    }
+                }
+
+                Column {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Repeat on", style = MaterialTheme.typography.labelLarge)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceAround
+                    ) {
+                        availableDays.forEach { day ->
+                            val isSelected = specificDays.contains(day)
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (isSelected) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                    .clickable { specificDays = if (isSelected) specificDays - day else specificDays + day },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = day.name.take(1),
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.labelSmall
                                 )
-                                .clickable { specificDays = if (isSelected) specificDays - day else specificDays + day },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = day.name.take(1),
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.labelSmall
-                            )
+                            }
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Checkbox(checked = playSound, onCheckedChange = { playSound = it })
-                    Text(stringResource(R.string.play_sound_label))
-                    Spacer(Modifier.width(8.dp))
-                    OutlinedButton(onClick = {
-                        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
-                        intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)
-                        ringtonePickerLauncher.launch(intent)
-                    }) {
-                        Text(text = stringResource(R.string.select_sound_action), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+                    Text("Play Sound")
+                    Spacer(Modifier.weight(1f))
+                    Switch(checked = playSound, onCheckedChange = { playSound = it })
                 }
-                if (soundUri.isNotEmpty()) {
-                    val ringtone = RingtoneManager.getRingtone(context, Uri.parse(soundUri))
-                    Text(
-                        stringResource(R.string.selected_sound_label, ringtone.getTitle(context)),
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
+                AnimatedVisibility(playSound) {
+                    OutlinedButton(
+                        onClick = {
+                            val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+                            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+                            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select alarm sound")
+                            soundUri?.let { intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(it)) }
+                            ringtonePickerLauncher.launch(intent)
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                    ) {
+                        Icon(painter = painterResource(id = AppIcons.MusicNote), contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = soundUri?.let { RingtoneManager.getRingtone(context, Uri.parse(it)).getTitle(context) } ?: "Default Sound",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(title, description, time, soundUri, playSound, specificDays) },
-                enabled = title.isNotBlank() && specificDays.isNotEmpty()
+                onClick = {
+                    onConfirm(title, description.ifBlank { null }, time, soundUri, playSound, specificDays)
+                },
+                enabled = title.isNotBlank() && !isSaving && specificDays.isNotEmpty()
             ) {
-                Text(stringResource(id = R.string.save_action))
+                if (isSaving) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                } else {
+                    Text(stringResource(id = R.string.save_action))
+                }
             }
         },
         dismissButton = {
@@ -189,4 +229,31 @@ fun TaskDialog(
             }
         }
     )
+
+    if (showTimePicker) {
+        val timeState = rememberTimePickerState(initialHour = time?.hour ?: 0, initialMinute = time?.minute ?: 0)
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            title = { Text("Select Time") },
+            text = {
+                TimePicker(
+                    state = timeState,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    time = LocalTime.of(timeState.hour, timeState.minute)
+                    showTimePicker = false
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }

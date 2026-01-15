@@ -4,9 +4,12 @@ import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -17,7 +20,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun EmptyState(message: String, @DrawableRes icon: Int) {
+fun EmptyState(
+    message: String,
+    @DrawableRes icon: Int,
+    actionLabel: String? = null,
+    onActionClick: (() -> Unit)? = null
+) {
     Box(
         modifier = Modifier.fillMaxSize().padding(32.dp),
         contentAlignment = Alignment.Center
@@ -37,6 +45,12 @@ fun EmptyState(message: String, @DrawableRes icon: Int) {
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (actionLabel != null && onActionClick != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(onClick = onActionClick) {
+                    Text(text = actionLabel)
+                }
+            }
         }
     }
 }

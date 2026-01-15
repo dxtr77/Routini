@@ -1,15 +1,9 @@
 package com.dxtr.routini.ui.screens
 
-import android.app.Activity
-import android.content.Intent
-import android.media.RingtoneManager
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.DrawableRes
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,31 +15,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimePicker
-import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberTimePickerState
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -55,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -67,22 +49,22 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.dxtr.routini.MainViewModel
 import com.dxtr.routini.R
+import com.dxtr.routini.data.RoutineTask
 import com.dxtr.routini.data.StandaloneTask
-import com.dxtr.routini.ui.composables.EmptyState
+import com.dxtr.routini.data.Task
 import com.dxtr.routini.ui.composables.StandaloneTaskDialog
+import com.dxtr.routini.ui.composables.TaskChip
 import com.dxtr.routini.ui.theme.AppIcons
-import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalTime
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 @Composable
 fun TasksScreen(
     navController: NavController,
     viewModel: MainViewModel = viewModel()
 ) {
-    val tasks by viewModel.standaloneTasks.collectAsState()
+    val tasks by viewModel.tasks.collectAsState()
     val haptic = LocalHapticFeedback.current
     var showTaskDialog by remember { mutableStateOf(false) }
     var taskToEdit by remember { mutableStateOf<StandaloneTask?>(null) }
@@ -102,7 +84,13 @@ fun TasksScreen(
         if (tasks.isEmpty()) {
             EmptyState(
                 message = "No tasks or alarms. Tap '+' to add one.",
-                icon = AppIcons.TaskAlt
+                icon = AppIcons.TaskAlt,
+                actionLabel = "Add Task",
+                onActionClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    taskToEdit = null
+                    showTaskDialog = true
+                }
             )
         } else {
             val groupedTasks = tasks.groupBy { it.date ?: LocalDate.MAX } // Null dates go to the end
@@ -129,43 +117,40 @@ fun TasksScreen(
                             modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
                         )
                     }
-                    items(tasksForDate, key = { it.id }) { task ->
-                        StandaloneTaskItem(
-                            task = task,
-                            onToggle = { 
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                viewModel.updateStandaloneTask(task.copy(isDone = !task.isDone))
-                             },
-                            onEdit = { 
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                taskToEdit = task
-                                showTaskDialog = true
-                             },
-                            onDelete = { viewModel.deleteStandaloneTask(task) }
-                        )
+                    items(tasksForDate, key = { task -> "${task::class.simpleName}_${task.id}" }) { task ->
+                        when (task) {
+                            is StandaloneTask -> {
+                                StandaloneTaskItem(
+                                    task = task,
+                                    onToggle = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        viewModel.updateTaskStatus(task, !task.isDone, if (date == LocalDate.MAX) null else date)
+                                     },
+                                    onEdit = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        taskToEdit = task
+                                        showTaskDialog = true
+                                     },
+                                    onDelete = { viewModel.deleteStandaloneTask(task) }
+                                )
+                            }
+                            is RoutineTask -> {
+                                RoutineTaskItem(task = task, onToggle = {})
+                            }
+                        }
                     }
                 }
             }
         }
 
         if (showTaskDialog) {
-            val task = taskToEdit
+            val currentTask = taskToEdit
             StandaloneTaskDialog(
-                dialogTitle = if (task == null) stringResource(R.string.new_task_title) else stringResource(R.string.edit_task_title),
-                initialTitle = task?.title ?: "",
-                initialDescription = task?.description,
-                initialDate = task?.date,
-                initialTime = task?.time,
-                initialSoundUri = task?.customSoundUri,
-                initialPlaySound = task?.shouldPlaySound ?: false,
-                isSaving = isSaving,
-                onDismiss = { 
-                    showTaskDialog = false
-                    taskToEdit = null
-                },
+                dialogTitle = if (currentTask == null) "New Task" else "Edit Task",
+                onDismiss = { showTaskDialog = false },
                 onConfirm = { title, description, date, time, soundUri, shouldPlaySound ->
                     isSaving = true
-                    if (task == null) {
+                    if (currentTask == null) {
                         viewModel.addStandaloneTask(StandaloneTask(
                             title = title,
                             description = description,
@@ -175,7 +160,7 @@ fun TasksScreen(
                             shouldPlaySound = shouldPlaySound
                         ))
                     } else {
-                        viewModel.updateStandaloneTask(task.copy(
+                        viewModel.updateStandaloneTask(currentTask.copy(
                             title = title,
                             description = description,
                             date = date,
@@ -184,22 +169,28 @@ fun TasksScreen(
                             shouldPlaySound = shouldPlaySound
                         ))
                     }
-                     showTaskDialog = false
-                     taskToEdit = null
-                     isSaving = false
+                    showTaskDialog = false
+                    isSaving = false
                 },
-                onDelete = if (task != null) {
+                onDelete = if (currentTask != null) {
                     {
-                        viewModel.deleteStandaloneTask(task)
+                        viewModel.deleteStandaloneTask(currentTask)
                         showTaskDialog = false
-                        taskToEdit = null
                     }
-                } else null
+                } else null,
+                initialTitle = currentTask?.title ?: "",
+                initialDescription = currentTask?.description,
+                initialDate = currentTask?.date,
+                initialTime = currentTask?.time,
+                initialSoundUri = currentTask?.customSoundUri,
+                initialPlaySound = currentTask?.shouldPlaySound ?: false,
+                isSaving = isSaving
             )
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StandaloneTaskItem(
     task: StandaloneTask,
@@ -209,92 +200,132 @@ fun StandaloneTaskItem(
 ) {
     val alpha = if (task.isDone) 0.5f else 1f
     var showDescription by remember { mutableStateOf(false) }
-    val haptic = LocalHapticFeedback.current
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .alpha(alpha)
-            .padding(vertical = 4.dp)
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { showDescription = !showDescription },
-                    onLongPress = { onEdit() }
-                )
-            },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (task.isDone) 0.dp else 2.dp)
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onToggle) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = {
+            when (it) {
+                SwipeToDismissBoxValue.EndToStart -> {
+                    onDelete()
+                    true
+                }
+                SwipeToDismissBoxValue.StartToEnd -> {
+                    onToggle()
+                    true
+                }
+                else -> false
+            }
+        }
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = true,
+        enableDismissFromEndToStart = true,
+        backgroundContent = {
+            val color = when (dismissState.targetValue) {
+                SwipeToDismissBoxValue.EndToStart -> Color.Red
+                SwipeToDismissBoxValue.StartToEnd -> Color.Green
+                else -> Color.Transparent
+            }
+            val icon = when (dismissState.targetValue) {
+                SwipeToDismissBoxValue.EndToStart -> AppIcons.Delete
+                SwipeToDismissBoxValue.StartToEnd -> AppIcons.Check
+                else -> null
+            }
+            val alignment = when (dismissState.targetValue) {
+                SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
+                SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
+                else -> Alignment.Center
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(color)
+                    .padding(horizontal = 20.dp),
+                contentAlignment = alignment
+            ) {
+                if (icon != null) {
                     Icon(
-                        painter = painterResource(id = if (task.isDone) AppIcons.CheckCircle else AppIcons.RadioButtonUnchecked),
+                        painter = painterResource(id = icon),
                         contentDescription = null,
-                        tint = if (task.isDone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(28.dp)
+                        tint = Color.White
                     )
                 }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = task.title,
-                        style = MaterialTheme.typography.bodyLarge,
-                        textDecoration = if (task.isDone) TextDecoration.LineThrough else null,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+            }
+        }
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .alpha(alpha)
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = { showDescription = !showDescription },
+                        onLongPress = { onEdit() }
                     )
+                },
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = if (task.isDone) 0.dp else 2.dp)
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onToggle) {
+                        Icon(
+                            painter = painterResource(id = if (task.isDone) AppIcons.CheckCircle else AppIcons.RadioButtonUnchecked),
+                            contentDescription = null,
+                            tint = if (task.isDone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (task.date != null) {
-                           TaskChip(icon = AppIcons.CalendarMonth, text = task.date.format(DateTimeFormatter.ofPattern("MMM dd")))
-                        }
-                        if (task.time != null) {
-                           TaskChip(icon = AppIcons.Alarm, text = task.time.format(DateTimeFormatter.ofPattern("HH:mm")))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = task.title,
+                            style = MaterialTheme.typography.bodyLarge,
+                            textDecoration = if (task.isDone) TextDecoration.LineThrough else null,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (task.date != null) {
+                                TaskChip(
+                                    icon = AppIcons.CalendarMonth,
+                                    text = task.date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
+                                )
+                            }
+                            if (task.time != null) {
+                                TaskChip(
+                                    icon = AppIcons.Schedule,
+                                    text = task.time.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT))
+                                )
+                            }
                         }
                     }
                 }
-
-                IconButton(onClick = onDelete) {
-                    Icon(painter = painterResource(id = AppIcons.Delete), contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                if (showDescription && !task.description.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = task.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 44.dp) // align with title
+                    )
                 }
-            }
-             AnimatedVisibility(visible = showDescription && !task.description.isNullOrBlank()) {
-                 Text(
-                    text = task.description ?: "",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 52.dp, top = 8.dp, end = 16.dp)
-                )
             }
         }
     }
 }
 
 @Composable
-fun TaskChip(@DrawableRes icon: Int, text: String) {
-    Surface(
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        modifier = Modifier.padding(end = 8.dp)
-    ) {
-        Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                painter = painterResource(id = icon),
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-                tint = MaterialTheme.colorScheme.onSecondaryContainer
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer
-            )
-        }
-    }
+fun RoutineTaskItem(task: RoutineTask, onToggle: (Boolean) -> Unit) {
+    Text(text = "Routine Task: ${task.title}")
 }

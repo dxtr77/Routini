@@ -1,6 +1,8 @@
 package com.dxtr.routini.ui.screens
 
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -10,11 +12,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
-import androidx.navigation.NavController
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
 import com.dxtr.routini.MainViewModel
+import com.dxtr.routini.ui.navigation.Screen
 import com.dxtr.routini.ui.theme.AppIcons
 import kotlinx.coroutines.launch
 
@@ -23,7 +24,7 @@ fun HomeScreen(
     navController: NavController,
     viewModel: MainViewModel = viewModel()
 ) {
-    val pagerState = rememberPagerState(pageCount = { 2 })
+    val pagerState = rememberPagerState(pageCount = { 3 })
     val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
@@ -36,8 +37,8 @@ fun HomeScreen(
                             pagerState.animateScrollToPage(0)
                         }
                     },
-                    icon = { Icon(painter = painterResource(id = AppIcons.List), contentDescription = "Routines") },
-                    label = { Text("Routines") }
+                    icon = { Icon(painter = painterResource(id = AppIcons.Schedule), contentDescription = "Dashboard") },
+                    label = { Text("Dashboard") }
                 )
                 NavigationBarItem(
                     selected = pagerState.currentPage == 1,
@@ -46,7 +47,16 @@ fun HomeScreen(
                             pagerState.animateScrollToPage(1)
                         }
                     },
-                    // Switched from TaskAlt (Extended) to CheckCircle (Core) to save APK size
+                    icon = { Icon(painter = painterResource(id = AppIcons.List), contentDescription = "Routines") },
+                    label = { Text("Routines") }
+                )
+                NavigationBarItem(
+                    selected = pagerState.currentPage == 2,
+                    onClick = {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(2)
+                        }
+                    },
                     icon = { Icon(painter = painterResource(id = AppIcons.CheckCircle), contentDescription = "Tasks") },
                     label = { Text("Tasks") }
                 )
@@ -58,8 +68,9 @@ fun HomeScreen(
             modifier = Modifier.padding(innerPadding)
         ) { page ->
             when (page) {
-                0 -> RoutinesScreen(navController = navController, viewModel = viewModel)
-                1 -> TasksScreen(navController = navController, viewModel = viewModel)
+                0 -> DashboardScreen(viewModel = viewModel)
+                1 -> RoutinesScreen(navController = navController, viewModel = viewModel)
+                2 -> TasksScreen(navController = navController, viewModel = viewModel)
             }
         }
     }

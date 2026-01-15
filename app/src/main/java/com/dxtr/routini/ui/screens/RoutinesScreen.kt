@@ -9,6 +9,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,14 +31,17 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -48,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -62,10 +67,11 @@ import androidx.navigation.NavController
 import com.dxtr.routini.MainViewModel
 import com.dxtr.routini.R
 import com.dxtr.routini.data.Routine
-import com.dxtr.routini.ui.composables.EmptyState
+import com.dxtr.routini.ui.composables.ComposeBottomSheet
 import com.dxtr.routini.ui.navigation.Screen
 import com.dxtr.routini.ui.theme.AppIcons
 import java.time.DayOfWeek
+import androidx.compose.material3.SwipeToDismissBoxValue
 
 @Composable
 fun RoutinesScreen(
@@ -74,7 +80,7 @@ fun RoutinesScreen(
 ) {
     val routines by viewModel.routines.collectAsState()
     val haptic = LocalHapticFeedback.current
-    var showRoutineDialog by remember { mutableStateOf(false) }
+    var showRoutineSheet by remember { mutableStateOf(false) }
     var routineToEdit by remember { mutableStateOf<Routine?>(null) }
     val context = LocalContext.current
     var showPermissionDialog by remember { mutableStateOf(false) }
@@ -100,14 +106,23 @@ fun RoutinesScreen(
             FloatingActionButton(onClick = {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 routineToEdit = null
-                showRoutineDialog = true
+                showRoutineSheet = true
             }) {
                 Icon(painter = painterResource(id = AppIcons.Add), contentDescription = stringResource(R.string.add_routine_desc))
             }
         }
     ) { innerPadding ->
         if (routines.isEmpty()) {
-            EmptyState(message = "No routines yet. Tap '+' to create one!", icon = AppIcons.List)
+            EmptyState(
+                message = "No routines yet. Tap '+' to create one!",
+                icon = AppIcons.List,
+                actionLabel = "Create Routine",
+                onActionClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    routineToEdit = null
+                    showRoutineSheet = true
+                }
+            )
         } else {
             LazyColumn(
                 modifier = Modifier
@@ -121,31 +136,37 @@ fun RoutinesScreen(
                         routine = routine,
                         viewModel = viewModel,
                         onNavigateToDetail = {
-                            // Navigate to the new screen
                             navController.navigate(Screen.RoutineDetail.createRoute(routine.id))
-                        }
+                        },
+                        onEdit = { 
+                            routineToEdit = routine
+                            showRoutineSheet = true
+                        },
+                        onDelete = { viewModel.deleteRoutine(routine) }
                     )
                 }
             }
         }
 
-        if (showRoutineDialog) {
-            RoutineDialog(
-                routine = routineToEdit,
-                onDismiss = { showRoutineDialog = false },
-                onConfirm = { name, days ->
-                    if (routineToEdit == null) {
-                        viewModel.addRoutine(Routine(name = name, themeColor = android.graphics.Color.BLUE, recurringDays = days))
-                    } else {
-                        viewModel.updateRoutine(routineToEdit!!.copy(name = name, recurringDays = days))
-                    }
-                    showRoutineDialog = false
-                },
-                onDelete = {
-                    routineToEdit?.let { viewModel.deleteRoutine(it) }
-                    showRoutineDialog = false
-                }
-            )
+        if (showRoutineSheet) {
+            ComposeBottomSheet(onDismiss = { showRoutineSheet = false }) {
+                RoutineBottomSheetContent(
+                    routine = routineToEdit,
+                    onConfirm = { name, days ->
+                        if (routineToEdit == null) {
+                            viewModel.addRoutine(Routine(name = name, themeColor = android.graphics.Color.BLUE, recurringDays = days))
+                        } else {
+                            viewModel.updateRoutine(routineToEdit!!.copy(name = name, recurringDays = days))
+                        }
+                        showRoutineSheet = false
+                    },
+                    onDelete = {
+                        routineToEdit?.let { viewModel.deleteRoutine(it) }
+                        showRoutineSheet = false
+                    },
+                    onDismiss = { showRoutineSheet = false }
+                )
+            }
         }
         
         // Permission Dialog Code (Same as before)
@@ -216,108 +237,187 @@ fun DayIndicator(activeDays: List<DayOfWeek>) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ModernRoutineCard(
     routine: Routine,
     viewModel: MainViewModel,
-    onNavigateToDetail: () -> Unit // NEW CALLBACK
+    onNavigateToDetail: () -> Unit, 
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val tasks by viewModel.getTasksForRoutine(routine.id).collectAsState(initial = emptyList())
     val completedTasks = tasks.count { it.isDone }
     val totalTasks = tasks.size
     val progress = if (totalTasks > 0) completedTasks.toFloat() / totalTasks else 0f
+    val animatedProgress by animateFloatAsState(targetValue = progress, label = "progressAnimation")
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .clickable { onNavigateToDetail() }, // Navigate on click
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = {
+            if (it == SwipeToDismissBoxValue.EndToStart) {
+                onDelete()
+                true
+            } else {
+                false
+            }
+        }
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromEndToStart = true,
+        backgroundContent = {
+            val color = when (dismissState.targetValue) {
+                SwipeToDismissBoxValue.EndToStart -> Color.Red
+                else -> Color.Transparent
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(color)
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Icon(
+                    painter = painterResource(id = AppIcons.Delete),
+                    contentDescription = null,
+                    tint = Color.White
+                )
+            }
+        }
     ) {
-        // Keep the same Row layout for Title, Progress, and Days
-        Row(
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .clickable { onNavigateToDetail() }, // Navigate on click
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = routine.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                DayIndicator(routine.recurringDays)
-            }
+            // Keep the same Row layout for Title, Progress, and Days
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = routine.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    DayIndicator(routine.recurringDays)
+                }
 
-            // Progress Circle
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(48.dp)) {
-                CircularProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxSize(),
-                    strokeWidth = 4.dp,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                )
-                Text(
-                    text = "${(progress * 100).toInt()}%",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold
-                )
+                IconButton(onClick = onEdit) {
+                    Icon(painter = painterResource(id = AppIcons.Edit), contentDescription = "Edit Routine")
+                }
+
+                // Progress Circle
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(56.dp)) {
+                    CircularProgressIndicator(
+                        progress = animatedProgress,
+                        modifier = Modifier.fillMaxSize(),
+                        strokeWidth = 6.dp,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                    Text(
+                        text = "${(animatedProgress * 100).toInt()}%",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                 Spacer(modifier = Modifier.width(8.dp))
+                 Icon(painter = painterResource(id = AppIcons.ArrowForward), contentDescription = "Open", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            // Removed the Arrow Icon since we don't expand anymore
-             Spacer(modifier = Modifier.width(8.dp))
-             Icon(painter = painterResource(id = AppIcons.ArrowForward), contentDescription = "Open", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
-fun RoutineDialog(routine: Routine?, onDismiss: () -> Unit, onConfirm: (String, List<DayOfWeek>) -> Unit, onDelete: () -> Unit) {
-    // ... [Same implementation as your provided file] ...
+fun RoutineBottomSheetContent(
+    routine: Routine?,
+    onConfirm: (String, List<DayOfWeek>) -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit
+) {
     val isEditing = routine != null
     var name by remember { mutableStateOf(routine?.name ?: "") }
-    var selectedDays by remember { mutableStateOf(routine?.recurringDays ?: DayOfWeek.entries) }
+    var selectedDays by remember { mutableStateOf(routine?.recurringDays ?: DayOfWeek.values().toList()) }
     var isSaving by remember { mutableStateOf(false) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(if (isEditing) "Edit Routine" else stringResource(R.string.new_routine_title))
-                if (isEditing) {
-                    IconButton(onClick = onDelete) {
-                        Icon(painter = painterResource(id = AppIcons.Delete), contentDescription = "Delete Routine", tint = MaterialTheme.colorScheme.error)
-                    }
+    Column(modifier = Modifier.padding(16.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (isEditing) "Edit Routine" else stringResource(R.string.new_routine_title),
+                style = MaterialTheme.typography.titleLarge
+            )
+            if (isEditing) {
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        painter = painterResource(id = AppIcons.Delete),
+                        contentDescription = "Delete Routine",
+                        tint = MaterialTheme.colorScheme.error
+                    )
                 }
             }
-        },
-        text = {
-            Column {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(stringResource(R.string.routine_name_label)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(stringResource(R.string.recurring_days_label), style = MaterialTheme.typography.labelLarge)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    DayOfWeek.entries.forEach { day ->
-                        val isSelected = selectedDays.contains(day)
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
-                                .clickable {
-                                    selectedDays =
-                                        if (isSelected) selectedDays - day else selectedDays + day
-                                },
-                            contentAlignment = Alignment.Center
-                        ) { Text(text = day.name.take(1), color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall) }
-                    }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text(stringResource(R.string.routine_name_label)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(stringResource(R.string.recurring_days_label), style = MaterialTheme.typography.labelLarge)
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            DayOfWeek.values().forEach { day ->
+                val isSelected = selectedDays.contains(day)
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                        )
+                        .clickable {
+                            selectedDays =
+                                if (isSelected) selectedDays - day else selectedDays + day
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = day.name.take(1),
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelSmall
+                    )
                 }
             }
-        },
-        confirmButton = { Button(onClick = { if (name.isNotBlank() && !isSaving) { isSaving = true; onConfirm(name, selectedDays) } }, enabled = name.isNotBlank() && selectedDays.isNotEmpty() && !isSaving) { Text(stringResource(R.string.save_action)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel_action)) } }
-    )
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = {
+                if (name.isNotBlank() && !isSaving) {
+                    isSaving = true
+                    onConfirm(name, selectedDays)
+                }
+            },
+            enabled = name.isNotBlank() && selectedDays.isNotEmpty() && !isSaving,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(stringResource(R.string.save_action))
+        }
+        TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.cancel_action))
+        }
+    }
 }
