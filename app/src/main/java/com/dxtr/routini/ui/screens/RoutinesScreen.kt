@@ -34,12 +34,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -73,14 +71,17 @@ import com.dxtr.routini.ui.theme.AppIcons
 import java.time.DayOfWeek
 
 @Composable
+
 fun RoutinesScreen(
     navController: NavController,
-    viewModel: MainViewModel = viewModel()
+    viewModel: MainViewModel = viewModel(),
+    showRoutineDialog: Boolean,
+    onDismissRoutineDialog: () -> Unit,
+    onEditRoutine: (Routine) -> Unit,
+    onAddRoutine: () -> Unit
 ) {
     val routines by viewModel.routines.collectAsState()
     val haptic = LocalHapticFeedback.current
-    var showRoutineDialog by remember { mutableStateOf(false) }
-    var routineToEdit by remember { mutableStateOf<Routine?>(null) }
     val context = LocalContext.current
     var showPermissionDialog by remember { mutableStateOf(false) }
 
@@ -100,106 +101,70 @@ fun RoutinesScreen(
         }
     }
 
-    Scaffold(
-        floatingActionButton = {
-            FloatingActionButton(onClick = {
+    if (routines.isEmpty()) {
+        EmptyState(
+            message = "No routines yet. Tap '+' to create one!",
+            icon = AppIcons.List,
+            actionLabel = "Create Routine",
+            onActionClick = {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                routineToEdit = null
-                showRoutineDialog = true
-            }) {
-                Icon(painter = painterResource(id = AppIcons.Add), contentDescription = stringResource(R.string.add_routine_desc))
+                onAddRoutine()
+            }
+        )
+    } else {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(items = routines, key = { it.id }) { routine ->
+                ModernRoutineCard(
+                    routine = routine,
+                    viewModel = viewModel,
+                    onNavigateToDetail = {
+                        navController.navigate(Screen.RoutineDetail.createRoute(routine.id))
+                    },
+                    onEdit = { onEditRoutine(routine) },
+                    onDelete = { viewModel.deleteRoutine(routine) }
+                )
             }
         }
-    ) { innerPadding ->
-        if (routines.isEmpty()) {
-            EmptyState(
-                message = "No routines yet. Tap '+' to create one!",
-                icon = AppIcons.List,
-                actionLabel = "Create Routine",
-                onActionClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    routineToEdit = null
-                    showRoutineDialog = true
-                }
-            )
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(items = routines, key = { it.id }) { routine ->
-                    ModernRoutineCard(
-                        routine = routine,
-                        viewModel = viewModel,
-                        onNavigateToDetail = {
-                            navController.navigate(Screen.RoutineDetail.createRoute(routine.id))
-                        },
-                        onEdit = { 
-                            routineToEdit = routine
-                            showRoutineDialog = true
-                        },
-                        onDelete = { viewModel.deleteRoutine(routine) }
-                    )
-                }
-            }
-        }
-
-        if (showRoutineDialog) {
-            RoutineDialog(
-                routine = routineToEdit,
-                onConfirm = { name, days ->
-                    if (routineToEdit == null) {
-                        viewModel.addRoutine(Routine(name = name, themeColor = android.graphics.Color.BLUE, recurringDays = days))
-                    } else {
-                        viewModel.updateRoutine(routineToEdit!!.copy(name = name, recurringDays = days))
+    }
+    
+    if (showPermissionDialog) {
+         AlertDialog(
+            onDismissRequest = { showPermissionDialog = false },
+            icon = { Icon(painter = painterResource(id = AppIcons.Warning), contentDescription = null) },
+            title = { Text(stringResource(R.string.permissions_required_title)) },
+            text = { Text(stringResource(R.string.permissions_required_message)) },
+            confirmButton = {
+                Button(onClick = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        launcherNotification.launch(Manifest.permission.POST_NOTIFICATIONS)
                     }
-                    showRoutineDialog = false
-                },
-                onDelete = {
-                    routineToEdit?.let { viewModel.deleteRoutine(it) }
-                    showRoutineDialog = false
-                },
-                onDismiss = { showRoutineDialog = false }
-            )
-        }
-        
-        if (showPermissionDialog) {
-             AlertDialog(
-                onDismissRequest = { showPermissionDialog = false },
-                icon = { Icon(painter = painterResource(id = AppIcons.Warning), contentDescription = null) },
-                title = { Text(stringResource(R.string.permissions_required_title)) },
-                text = { Text(stringResource(R.string.permissions_required_message)) },
-                confirmButton = {
-                    Button(onClick = {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            launcherNotification.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        }
-                        if (!Settings.canDrawOverlays(context)) {
-                            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:${context.packageName}".toUri())
+                    if (!Settings.canDrawOverlays(context)) {
+                        val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:${context.packageName}".toUri())
+                        context.startActivity(intent)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                        if (!alarmManager.canScheduleExactAlarms()) {
+                            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
                             context.startActivity(intent)
                         }
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-                            if (!alarmManager.canScheduleExactAlarms()) {
-                                val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-                                context.startActivity(intent)
-                            }
-                        }
-                        showPermissionDialog = false
-                    }) {
-                        Text(stringResource(R.string.grant_action))
                     }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showPermissionDialog = false }) {
-                        Text(stringResource(R.string.later_action))
-                    }
+                    showPermissionDialog = false
+                }) {
+                    Text(stringResource(R.string.grant_action))
                 }
-            )
-        }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPermissionDialog = false }) {
+                    Text(stringResource(R.string.later_action))
+                }
+            }
+        )
     }
 }
 
@@ -261,8 +226,18 @@ fun ModernRoutineCard(
     onDelete: () -> Unit
 ) {
     val tasks by viewModel.getTasksForRoutine(routine.id).collectAsState(initial = emptyList())
-    val completedTasks = tasks.count { it.isDone }
-    val totalTasks = tasks.size
+    val today = java.time.LocalDate.now()
+    val currentDayOfWeek = today.dayOfWeek
+    val relevantTasks = tasks.filter { task ->
+        val days = task.specificDays
+        if (!days.isNullOrEmpty()) {
+            days.contains(currentDayOfWeek)
+        } else {
+            routine.recurringDays.contains(currentDayOfWeek)
+        }
+    }
+    val completedTasks = relevantTasks.count { it.isDone }
+    val totalTasks = relevantTasks.size
     val progress = if (totalTasks > 0) completedTasks.toFloat() / totalTasks else 0f
     val animatedProgress by animateFloatAsState(targetValue = progress, label = "progressAnimation")
     var showMenu by remember { mutableStateOf(false) }
@@ -290,28 +265,19 @@ fun ModernRoutineCard(
                 SmartDayIndicator(routine.recurringDays)
             }
 
-            if (progress > 0) {
-                if (progress == 1f) {
-                    Icon(
-                        painter = painterResource(id = AppIcons.CheckCircle),
-                        contentDescription = "Completed",
-                        tint = Color.Green,
-                        modifier = Modifier.size(56.dp)
+            if (totalTasks > 0) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(56.dp)) {
+                    CircularProgressIndicator(
+                        progress = { animatedProgress },
+                        modifier = Modifier.fillMaxSize(),
+                        strokeWidth = 6.dp,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
                     )
-                } else {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(56.dp)) {
-                        CircularProgressIndicator(
-                            progress = animatedProgress,
-                            modifier = Modifier.fillMaxSize(),
-                            strokeWidth = 6.dp,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                        )
-                        Text(
-                            text = "${(animatedProgress * 100).toInt()}%",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    Text(
+                        text = "${(animatedProgress * 100).toInt()}%",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             } 
 
@@ -354,22 +320,60 @@ fun RoutineDialog(
     var selectedDays by remember { mutableStateOf(routine?.recurringDays ?: emptyList()) }
     var isSaving by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Routine?") },
+            text = { Text("This will delete the routine and all its tasks permanently.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDelete()
+                        showDeleteConfirm = false
+                    },
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+            }
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(
-                text = if (isEditing) "Edit Routine" else stringResource(R.string.new_routine_title),
-                style = MaterialTheme.typography.titleLarge
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (isEditing) "Edit Routine" else stringResource(R.string.new_routine_title),
+                    style = MaterialTheme.typography.titleLarge
+                )
+                if (isEditing) {
+                    IconButton(onClick = { showDeleteConfirm = true }) {
+                        Icon(
+                            painter = painterResource(id = AppIcons.Delete),
+                            contentDescription = "Delete Routine",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
         },
         text = {
             RoutineDialogContent(
                 name = name,
                 onNameChange = { name = it },
                 selectedDays = selectedDays,
-                onSelectedDaysChange = { selectedDays = it },
-                isEditing = isEditing,
-                onDelete = onDelete
+                onSelectedDaysChange = { selectedDays = it }
             )
         },
         confirmButton = {
@@ -380,9 +384,17 @@ fun RoutineDialog(
                         onConfirm(name, selectedDays)
                     }
                 },
-                enabled = name.isNotBlank() && selectedDays.isNotEmpty() && !isSaving
+                enabled = name.isNotBlank() && selectedDays.isNotEmpty() && !isSaving,
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
             ) {
-                Text(stringResource(R.string.save_action))
+                if (isSaving) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+                } else {
+                    Text(stringResource(R.string.save_action))
+                }
             }
         },
         dismissButton = {
@@ -398,25 +410,9 @@ fun RoutineDialogContent(
     name: String,
     onNameChange: (String) -> Unit,
     selectedDays: List<DayOfWeek>,
-    onSelectedDaysChange: (List<DayOfWeek>) -> Unit,
-    isEditing: Boolean,
-    onDelete: () -> Unit
+    onSelectedDaysChange: (List<DayOfWeek>) -> Unit
 ) {
     Column {
-        if (isEditing) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        painter = painterResource(id = AppIcons.Delete),
-                        contentDescription = "Delete Routine",
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-        }
         OutlinedTextField(
             value = name,
             onValueChange = onNameChange,
@@ -432,7 +428,7 @@ fun RoutineDialogContent(
                 val isSelected = selectedDays.contains(day)
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(36.dp)
                         .clip(CircleShape)
                         .background(
                             if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
@@ -445,7 +441,7 @@ fun RoutineDialogContent(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = day.name.take(1),
+                        text = day.name.take(3).lowercase().replaceFirstChar { it.uppercase() },
                         color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelSmall
                     )

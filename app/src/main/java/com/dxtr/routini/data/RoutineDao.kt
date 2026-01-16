@@ -19,7 +19,7 @@ interface RoutineDao {
     @Query("SELECT * FROM routines WHERE id = :id")
     suspend fun getRoutineById(id: Int): Routine?
 
-    @Query("SELECT * FROM routines WHERE recurringDays LIKE '%' || :day || '%'")
+    @Query("SELECT * FROM routines WHERE recurringDays LIKE '%\"' || :day || '\"%'")
     fun getRoutinesForDay(day: String): Flow<List<Routine>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

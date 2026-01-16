@@ -17,8 +17,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -28,6 +30,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val routineDao = AppDatabase.getDatabase(application).routineDao()
     private val standaloneTaskDao = AppDatabase.getDatabase(application).standaloneTaskDao()
     private val routineHistoryDao = AppDatabase.getDatabase(application).routineHistoryDao()
+    private val alarmScheduler = AlarmScheduler
 
     private val _isSavingTask = MutableStateFlow(false)
     val isSavingTask: StateFlow<Boolean> = _isSavingTask.asStateFlow()
@@ -35,8 +38,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedDate = MutableStateFlow(LocalDate.now())
     val selectedDate: StateFlow<LocalDate> = _selectedDate.asStateFlow()
 
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    fun onSearchQueryChanged(query: String) {
+        _searchQuery.value = query
+    }
+
+    val weeklyStats: StateFlow<Map<LocalDate, Int>> = routineHistoryDao.getHistorySince(LocalDate.now().minusDays(6))
+        .map { historyList ->
+            historyList.groupBy { it.completionDate }.mapValues { it.value.size }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
     val routines: StateFlow<List<Routine>> = routineDao.getAllRoutines()
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val allStandaloneTasks: Flow<List<StandaloneTask>> = standaloneTaskDao.getAllStandaloneTasks()
 
@@ -58,27 +75,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            combine(combinedRoutineTasksFlow, standaloneTasksFlow, historyFlow) { routineTasks, standaloneTasks, history ->
+            combine(combinedRoutineTasksFlow, standaloneTasksFlow, historyFlow, _searchQuery) { routineTasks, standaloneTasks, history, query ->
                 val allTasks = mutableListOf<Task>()
                 val today = LocalDate.now()
 
                 allTasks.addAll(routineTasks.map { task ->
-                    val isDone = if (date == today) task.isDone else history.any { it.taskId == task.id }
+                    val isDone = if (date == today) task.isDone else history.any { it.taskId == task.id && it.taskType == "ROUTINE" }
                     task.copy(isDone = isDone)
                 })
 
                 allTasks.addAll(standaloneTasks.map { task ->
-                    val isDone = if (date == today) task.isDone else history.any { it.taskId == task.id }
+                    val isDone = if (date == today) task.isDone else history.any { it.taskId == task.id && it.taskType == "STANDALONE" }
                     task.copy(isDone = isDone)
                 })
 
-                allTasks.sortedWith(compareBy(nullsLast()) { it.time })
+                allTasks.filter { it.title.contains(query, ignoreCase = true) }
+                    .sortedWith(compareBy(nullsLast()) { it.time })
             }
         }
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+        .distinctUntilChanged()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val allTasks: StateFlow<List<StandaloneTask>> = allStandaloneTasks
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val allTasks: StateFlow<List<StandaloneTask>> = combine(allStandaloneTasks, _searchQuery) { tasks, query ->
+        tasks.filter { it.title.contains(query, ignoreCase = true) }
+    }
+    .distinctUntilChanged()
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
 
     fun onNextDay() {
@@ -95,7 +117,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Routines
     fun addRoutine(routine: Routine) = viewModelScope.launch {
-        routineDao.insertRoutine(routine)
+        try {
+            routineDao.insertRoutine(routine)
+        } catch (e: Exception) { e.printStackTrace() }
     }
 
     fun updateRoutine(routine: Routine) = viewModelScope.launch {
@@ -103,7 +127,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteRoutine(routine: Routine) = viewModelScope.launch {
-        routineDao.deleteRoutine(routine)
+        try {
+            routineDao.deleteRoutine(routine)
+        } catch(e: Exception) { e.printStackTrace() }
     }
 
     fun getTasksForRoutine(routineId: Int): Flow<List<RoutineTask>> {
@@ -113,12 +139,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Routine Tasks
     fun addRoutineTask(task: RoutineTask) = viewModelScope.launch {
         _isSavingTask.value = true
-        val id = routineDao.insertRoutineTask(task)
-        if (task.time != null) {
-            val routine = routineDao.getRoutineById(task.routineId)
-            val newTask = task.copy(id = id.toInt())
-            AlarmScheduler.scheduleRoutineTaskAlarm(getApplication(), newTask, routine?.recurringDays)
-        }
+        try {
+            val id = routineDao.insertRoutineTask(task)
+            if (task.time != null) {
+                val routine = routineDao.getRoutineById(task.routineId)
+                val newTask = task.copy(id = id.toInt())
+                alarmScheduler.scheduleRoutineTaskAlarm(getApplication(), newTask, routine?.recurringDays)
+            }
+        } catch (e: Exception) { e.printStackTrace() }
         _isSavingTask.value = false
     }
 
@@ -128,26 +156,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         if (task.time != null) {
             val routine = routineDao.getRoutineById(task.routineId)
-            AlarmScheduler.scheduleRoutineTaskAlarm(getApplication(), task, routine?.recurringDays)
+            alarmScheduler.scheduleRoutineTaskAlarm(getApplication(), task, routine?.recurringDays)
         } else {
-            AlarmScheduler.cancelRoutineTaskAlarm(getApplication(), task)
+            alarmScheduler.cancelRoutineTaskAlarm(getApplication(), task)
         }
         _isSavingTask.value = false
     }
 
     fun deleteRoutineTask(task: RoutineTask) = viewModelScope.launch {
         routineDao.deleteRoutineTask(task)
-        AlarmScheduler.cancelRoutineTaskAlarm(getApplication(), task)
+        alarmScheduler.cancelRoutineTaskAlarm(getApplication(), task)
     }
 
     // Standalone Tasks
     fun addStandaloneTask(task: StandaloneTask) = viewModelScope.launch {
         _isSavingTask.value = true
-        val id = standaloneTaskDao.insertStandaloneTask(task)
-        if (task.time != null) {
-            val newTask = task.copy(id = id.toInt())
-            AlarmScheduler.scheduleStandaloneTaskAlarm(getApplication(), newTask)
-        }
+        try {
+            val id = standaloneTaskDao.insertStandaloneTask(task)
+            if (task.time != null) {
+                val newTask = task.copy(id = id.toInt())
+                alarmScheduler.scheduleStandaloneTaskAlarm(getApplication(), newTask)
+            }
+        } catch(e: Exception) { e.printStackTrace() }
         _isSavingTask.value = false
     }
 
@@ -155,16 +185,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _isSavingTask.value = true
         standaloneTaskDao.update(task)
         if (task.time != null) {
-            AlarmScheduler.scheduleStandaloneTaskAlarm(getApplication(), task)
+            alarmScheduler.scheduleStandaloneTaskAlarm(getApplication(), task)
         } else {
-            AlarmScheduler.cancelStandaloneTaskAlarm(getApplication(), task)
+            alarmScheduler.cancelStandaloneTaskAlarm(getApplication(), task)
         }
         _isSavingTask.value = false
     }
 
     fun deleteStandaloneTask(task: StandaloneTask) = viewModelScope.launch {
         standaloneTaskDao.deleteStandaloneTask(task)
-        AlarmScheduler.cancelStandaloneTaskAlarm(getApplication(), task)
+        alarmScheduler.cancelStandaloneTaskAlarm(getApplication(), task)
     }
 
     fun updateTaskStatus(task: Task, isDone: Boolean, date: LocalDate?) {
@@ -173,23 +203,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 is RoutineTask -> {
                     if (date == null) return@launch // Should not happen for a routine task
                     val today = LocalDate.now()
+                    val updatedTask = task.copy(isDone = isDone)
                     if (date == today) {
-                        updateRoutineTask(task.copy(isDone = isDone))
+                        updateRoutineTask(updatedTask)
                     }
                     if (isDone) {
-                        routineHistoryDao.insert(RoutineHistory(taskId = task.id, completionDate = date))
+                        routineHistoryDao.insert(RoutineHistory(taskId = task.id, taskType = "ROUTINE", completionDate = date))
                     } else {
-                        routineHistoryDao.delete(task.id, date)
+                        routineHistoryDao.delete(task.id, "ROUTINE", date)
+                    }
+                    if (task.time != null) {
+                        val routine = routineDao.getRoutineById(task.routineId)
+                        alarmScheduler.scheduleRoutineTaskAlarm(getApplication(), updatedTask, routine?.recurringDays)
                     }
                 }
                 is StandaloneTask -> {
-                    updateStandaloneTask(task.copy(isDone = isDone))
+                    val updatedTask = task.copy(isDone = isDone)
+                    updateStandaloneTask(updatedTask)
                     if (date != null) {
                         if (isDone) {
-                            routineHistoryDao.insert(RoutineHistory(taskId = task.id, completionDate = date))
+                            routineHistoryDao.insert(RoutineHistory(taskId = task.id, taskType = "STANDALONE", completionDate = date))
                         } else {
-                            routineHistoryDao.delete(task.id, date)
+                            routineHistoryDao.delete(task.id, "STANDALONE", date)
                         }
+                    }
+                    if (task.time != null) {
+                        alarmScheduler.scheduleStandaloneTaskAlarm(getApplication(), updatedTask)
                     }
                 }
             }

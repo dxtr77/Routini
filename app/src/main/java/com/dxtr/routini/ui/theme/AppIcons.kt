@@ -22,4 +22,5 @@ object AppIcons {
     val ArrowDropDown = R.drawable.baseline_arrow_drop_down_24
     val Check = R.drawable.baseline_check_24
     val MoreVert = R.drawable.baseline_more_vert_24
+    val Search = R.drawable.baseline_search_24
 }

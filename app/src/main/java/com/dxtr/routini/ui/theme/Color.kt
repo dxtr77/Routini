@@ -2,7 +2,14 @@ package com.dxtr.routini.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Light Theme Colors
+// Glassmorphism / Modern Palette
+// Primary: Deep Ocean / Teal
+// Secondary: Soft Sage
+// Tertiary: Muted Coral/Pink for accents
+
+val Seed = Color(0xFF006C51)
+
+// Light Scheme (Glassy Day)
 val PrimaryLight = Color(0xFF006C51)
 val OnPrimaryLight = Color(0xFFFFFFFF)
 val PrimaryContainerLight = Color(0xFF88F8D0)
@@ -13,31 +20,35 @@ val OnSecondaryLight = Color(0xFFFFFFFF)
 val SecondaryContainerLight = Color(0xFFCCE8E0)
 val OnSecondaryContainerLight = Color(0xFF05201A)
 
-val TertiaryLight = Color(0xFF3E6373)
+val TertiaryLight = Color(0xFF3E6373) // Muted Blue-Grey
 val OnTertiaryLight = Color(0xFFFFFFFF)
 val TertiaryContainerLight = Color(0xFFC1E8FB)
 val OnTertiaryContainerLight = Color(0xFF001F29)
 
-val BackgroundLight = Color(0xFFFBFDF9)
-val SurfaceLight = Color(0xFFFBFDF9)
+val BackgroundLight = Color(0xFFF0F4F3) // Slightly tinted off-white
+val SurfaceLight = Color(0x99FFFFFF) // High alpha for glass effect
 val OnSurfaceLight = Color(0xFF191C1B)
 
-// Dark Theme Colors (Pastel/Bright for visibility)
-val PrimaryDark = Color(0xFF80D5BF)  // Bright Mint
+// Dark Scheme (Glassy Night)
+val PrimaryDark = Color(0xFF80D5BF)
 val OnPrimaryDark = Color(0xFF00382A)
 val PrimaryContainerDark = Color(0xFF00513D)
 val OnPrimaryContainerDark = Color(0xFF88F8D0)
 
-val SecondaryDark = Color(0xFFB1CCC4) // Pale Sage
+val SecondaryDark = Color(0xFFB1CCC4)
 val OnSecondaryDark = Color(0xFF1C352F)
 val SecondaryContainerDark = Color(0xFF334B45)
 val OnSecondaryContainerDark = Color(0xFFCCE8E0)
 
-val TertiaryDark = Color(0xFFA6CCE0) // Soft Blue
+val TertiaryDark = Color(0xFFA6CCE0)
 val OnTertiaryDark = Color(0xFF093543)
 val TertiaryContainerDark = Color(0xFF254B5A)
 val OnTertiaryContainerDark = Color(0xFFC1E8FB)
 
-val BackgroundDark = Color(0xFF191C1B)
-val SurfaceDark = Color(0xFF191C1B)
+val BackgroundDark = Color(0xFF101413)
+val SurfaceDark = Color(0x991C1B1F) // Dark grey base for glass on dark
 val OnSurfaceDark = Color(0xFFE1E3DF)
+
+// Gradients
+val GradientStart = Color(0xFF80D5BF)
+val GradientEnd = Color(0xFF4CA8CD)

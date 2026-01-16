@@ -14,6 +14,7 @@ import com.dxtr.routini.R
 import com.dxtr.routini.data.AppDatabase
 import com.dxtr.routini.service.RoutiniService
 import com.dxtr.routini.ui.AlarmActivity
+import com.dxtr.routini.utils.AlarmScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -23,6 +24,7 @@ class AlarmReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_STOP = "STOP_ALARM"
         const val ACTION_MARK_DONE = "MARK_AS_DONE"
+        const val ACTION_TRIGGER = "TRIGGER_ALARM"
         
         // keys for extras
         const val EXTRA_TASK_ID = "TASK_ID"
@@ -61,12 +63,19 @@ class AlarmReceiver : BroadcastReceiver() {
                             when (taskType) {
                                 "ROUTINE" -> {
                                     val task = db.routineDao().getTaskById(taskId)
-                                    task?.let { db.routineDao().updateRoutineTask(it.copy(isDone = true)) }
+                                    task?.let {
+                                        db.routineDao().updateRoutineTask(it.copy(isDone = true))
+                                        val routine = db.routineDao().getRoutineById(it.routineId)
+                                        AlarmScheduler.scheduleRoutineTaskAlarm(context, it.copy(isDone = true), routine?.recurringDays)
+                                    }
                                 }
                                 "STANDALONE" -> {
                                      val standaloneTaskId = taskId - 1000000 // Subtract offset
                                      val task = db.standaloneTaskDao().getTaskById(standaloneTaskId)
-                                     task?.let { db.standaloneTaskDao().update(it.copy(isDone = true)) }
+                                     task?.let {
+                                         db.standaloneTaskDao().update(it.copy(isDone = true))
+                                         AlarmScheduler.scheduleStandaloneTaskAlarm(context, it.copy(isDone = true))
+                                     }
                                 }
                             }
                         }
@@ -79,7 +88,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 return
             }
 
-            else -> {
+            ACTION_TRIGGER, null -> {
                 // Normal Alarm Trigger
                 val soundUriString = intent.getStringExtra("SOUND_URI")
                 val title = intent.getStringExtra("TITLE") ?: "Routini Alarm"

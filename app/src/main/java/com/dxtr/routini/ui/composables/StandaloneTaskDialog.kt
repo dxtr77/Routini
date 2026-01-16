@@ -55,6 +55,7 @@ import com.dxtr.routini.R
 import com.dxtr.routini.ui.theme.AppIcons
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -75,6 +76,7 @@ fun StandaloneTaskDialog(
     initialPlaySound: Boolean,
     initialShouldVibrate: Boolean,
     isSaving: Boolean,
+    isNewTask: Boolean,
 ) {
     var title by remember { mutableStateOf(initialTitle) }
     var description by remember { mutableStateOf(initialDescription ?: "") }
@@ -84,6 +86,7 @@ fun StandaloneTaskDialog(
     var playSound by remember { mutableStateOf(initialPlaySound) }
     var shouldVibrate by remember { mutableStateOf(initialShouldVibrate) }
     var isDateTimeEnabled by remember { mutableStateOf(initialDate != null) }
+    var showError by remember { mutableStateOf(false) }
 
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
@@ -112,7 +115,7 @@ fun StandaloneTaskDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(dialogTitle)
-                if (onDelete != null) {
+                if (onDelete != null && !isNewTask) {
                     IconButton(onClick = onDelete) {
                         Icon(painter = painterResource(id = AppIcons.Delete), contentDescription = "Delete Task", tint = MaterialTheme.colorScheme.error)
                     }
@@ -148,6 +151,9 @@ fun StandaloneTaskDialog(
                             if (isDateTimeEnabled) {
                                 if (date == null) date = LocalDate.now()
                                 if (time == null) time = LocalTime.now()
+                            } else {
+                                date = null
+                                time = null
                             }
                         }
                     )
@@ -186,14 +192,18 @@ fun StandaloneTaskDialog(
                                             .align(Alignment.CenterEnd)
                                             .padding(end = 8.dp)
                                             .size(18.dp)
-                                            .clickable { date = null }
+                                            .clickable {
+                                                date = null
+                                                time = null
+                                            }
                                     )
                                 }
                             }
                             Box(modifier = Modifier.weight(1f)) {
                                 OutlinedButton(
                                     onClick = { showTimePicker = true },
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier.fillMaxWidth(),
+                                    enabled = date != null
                                 ) {
                                     Icon(
                                         painter = painterResource(id = AppIcons.Schedule),
@@ -220,6 +230,9 @@ fun StandaloneTaskDialog(
                                 }
                             }
                         }
+                        if (showError) {
+                            Text("Cannot create task in the past", color = MaterialTheme.colorScheme.error)
+                        }
                         Spacer(modifier = Modifier.height(16.dp))
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                             Text("Play Sound")
@@ -229,11 +242,17 @@ fun StandaloneTaskDialog(
                         AnimatedVisibility(playSound) {
                             OutlinedButton(
                                 onClick = {
-                                    val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
-                                    intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
-                                    intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select alarm sound")
-                                    soundUri?.let { intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, it.toUri()) }
-                                    ringtonePickerLauncher.launch(intent)
+// FIX: Wrap in try-catch to prevent crash if activity not found
+                                    try {
+                                        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+                                        intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+                                        intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select alarm sound")
+                                        soundUri?.let { intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, it.toUri()) }
+                                        ringtonePickerLauncher.launch(intent)
+                                    } catch (e: Exception) {
+                                        // Fallback or log
+                                        e.printStackTrace()
+                                    }
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -246,7 +265,9 @@ fun StandaloneTaskDialog(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = soundUri?.let { RingtoneManager.getRingtone(context, it.toUri()).getTitle(context) } ?: "Default Sound",
+                                    text = soundUri?.let { 
+                                        try { RingtoneManager.getRingtone(context, it.toUri()).getTitle(context) } catch(e:Exception) { "Unknown" }
+                                    } ?: "Default Sound",
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -265,6 +286,13 @@ fun StandaloneTaskDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    if (isDateTimeEnabled && date != null && time != null) {
+                        val taskDateTime = LocalDateTime.of(date, time)
+                        if (taskDateTime.isBefore(LocalDateTime.now())) {
+                            showError = true
+                            return@Button
+                        }
+                    }
                     val finalDate = if (isDateTimeEnabled) date else null
                     val finalTime = if (isDateTimeEnabled) time else null
                     onConfirm(title, description.ifBlank { null }, finalDate, finalTime, soundUri, playSound, shouldVibrate)
@@ -313,15 +341,9 @@ fun StandaloneTaskDialog(
 
     if (showTimePicker) {
         val timeState = rememberTimePickerState(initialHour = time?.hour ?: 0, initialMinute = time?.minute ?: 0)
+        // Replaced TimePickerDialog with AlertDialog as it is not part of standard Material3 yet
         AlertDialog(
             onDismissRequest = { showTimePicker = false },
-            title = { Text("Select Time") },
-            text = {
-                TimePicker(
-                    state = timeState,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            },
             confirmButton = {
                 TextButton(onClick = {
                     time = LocalTime.of(timeState.hour, timeState.minute)
@@ -334,6 +356,9 @@ fun StandaloneTaskDialog(
                 TextButton(onClick = { showTimePicker = false }) {
                     Text("Cancel")
                 }
+            },
+            text = {
+                TimePicker(state = timeState)
             }
         )
     }

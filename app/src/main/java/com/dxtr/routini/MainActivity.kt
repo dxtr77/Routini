@@ -15,9 +15,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Start the Keep-Alive Service
-        val serviceIntent = android.content.Intent(this, com.dxtr.routini.service.RoutiniService::class.java)
-        startForegroundService(serviceIntent)
+        // Service Removed: "Keep-Alive" service is no longer needed as AlarmManager handles wakeups.
 
         enableEdgeToEdge()
 

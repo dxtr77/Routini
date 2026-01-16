@@ -9,8 +9,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.dxtr.routini.ui.screens.HomeScreen
 import com.dxtr.routini.ui.screens.RoutineDetailScreen
-import com.dxtr.routini.ui.screens.RoutinesScreen
-import com.dxtr.routini.ui.screens.TasksScreen
 
 @Composable
 fun RoutiniNavHost(
@@ -24,12 +22,6 @@ fun RoutiniNavHost(
     ) {
         composable(Screen.Home.route) {
             HomeScreen(navController = navController)
-        }
-        composable(Screen.Routines.route) {
-            RoutinesScreen(navController = navController)
-        }
-        composable(Screen.Tasks.route) {
-            TasksScreen()
         }
         composable(
             route = Screen.RoutineDetail.route,

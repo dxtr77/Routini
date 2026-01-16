@@ -5,10 +5,12 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Routine::class, RoutineTask::class, StandaloneTask::class, RoutineHistory::class],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -28,10 +30,16 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "routini_database"
                 )
-                .fallbackToDestructiveMigration()
+                .addMigrations(MIGRATION_8_9)
                 .build()
                 INSTANCE = instance
                 instance
+            }
+        }
+
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE routine_history ADD COLUMN taskType TEXT NOT NULL DEFAULT 'ROUTINE'")
             }
         }
     }

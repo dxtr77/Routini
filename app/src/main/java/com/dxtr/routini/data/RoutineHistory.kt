@@ -8,5 +8,6 @@ import java.time.LocalDate
 data class RoutineHistory(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val taskId: Int,
+    val taskType: String, // "ROUTINE" or "STANDALONE"
     val completionDate: LocalDate
 )

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.media.RingtoneManager
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -88,9 +89,13 @@ fun TaskDialog(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)?.let {
-                soundUri = it.toString()
+            val uri: Uri? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
             }
+            uri?.let { soundUri = it.toString() }
         }
     }
 
@@ -159,7 +164,7 @@ fun TaskDialog(
                             val isSelected = specificDays.contains(day)
                             Box(
                                 modifier = Modifier
-                                    .size(32.dp)
+                                    .size(36.dp) // Slight increase for 3 letters
                                     .clip(CircleShape)
                                     .background(
                                         if (isSelected) MaterialTheme.colorScheme.primary
@@ -169,7 +174,7 @@ fun TaskDialog(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = day.name.take(1),
+                                    text = day.name.take(3).lowercase().replaceFirstChar { it.uppercase() },
                                     color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     style = MaterialTheme.typography.labelSmall
                                 )
@@ -187,19 +192,24 @@ fun TaskDialog(
                 AnimatedVisibility(playSound) {
                     OutlinedButton(
                         onClick = {
-                            val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
-                            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
-                            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select alarm sound")
-                            soundUri?.let { intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI,
-                                it.toUri()) }
-                            ringtonePickerLauncher.launch(intent)
+                            try {
+                                val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+                                intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+                                intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select alarm sound")
+                                soundUri?.let { intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, it.toUri()) }
+                                ringtonePickerLauncher.launch(intent)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
                         },
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                     ) {
                         Icon(painter = painterResource(id = AppIcons.MusicNote), contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = soundUri?.let { RingtoneManager.getRingtone(context, it.toUri()).getTitle(context) } ?: "Default Sound",
+                            text = soundUri?.let { 
+                                try { RingtoneManager.getRingtone(context, it.toUri()).getTitle(context) } catch(e: Exception) { "Unknown" }
+                            } ?: "Default Sound",
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -218,7 +228,7 @@ fun TaskDialog(
                 onClick = {
                     onConfirm(title, description.ifBlank { null }, time, soundUri, playSound, shouldVibrate, specificDays)
                 },
-                enabled = title.isNotBlank() && !isSaving && specificDays.isNotEmpty()
+                enabled = title.isNotBlank() && !isSaving
             ) {
                 if (isSaving) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp))

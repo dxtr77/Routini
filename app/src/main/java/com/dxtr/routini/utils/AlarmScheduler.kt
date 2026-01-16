@@ -18,15 +18,13 @@ object AlarmScheduler {
 
     fun scheduleRoutineTaskAlarm(context: Context, task: RoutineTask, recurringDays: List<DayOfWeek>?) {
         val time = task.time ?: return
-        
-        // LOGIC FIX: Check specificDays. If task has specific days, use those. 
-        // Otherwise, use the routine's recurringDays.
+
         val targetDays = if (!task.specificDays.isNullOrEmpty()) {
             task.specificDays
         } else {
             recurringDays
         }
-        
+
         val alarmTime = calculateNextAlarmTime(time, targetDays, task.isDone) ?: return
 
         scheduleAlarm(context, task.id, task.title, task.customSoundUri, task.shouldPlaySound, alarmTime, "ROUTINE")
@@ -34,10 +32,10 @@ object AlarmScheduler {
 
     fun scheduleStandaloneTaskAlarm(context: Context, task: StandaloneTask) {
         val time = task.time ?: return
-        
+
         val triggerAtMillis: Long = if (task.date != null) {
             val taskDateTime = LocalDateTime.of(task.date, time)
-            if (taskDateTime.isBefore(LocalDateTime.now())) return 
+            if (taskDateTime.isBefore(LocalDateTime.now())) return
             taskDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         } else {
             calculateNextAlarmTime(time, null, false) ?: return
@@ -46,13 +44,13 @@ object AlarmScheduler {
         scheduleAlarm(context, task.id + STANDALONE_TASK_OFFSET, task.title, task.customSoundUri, task.shouldPlaySound, triggerAtMillis, "STANDALONE")
     }
 
-    // ... [cancel functions and scheduleAlarm private function remain the same] ...
     fun cancelRoutineTaskAlarm(context: Context, task: RoutineTask) { cancelAlarm(context, task.id) }
     fun cancelStandaloneTaskAlarm(context: Context, task: StandaloneTask) { cancelAlarm(context, task.id + STANDALONE_TASK_OFFSET) }
 
     private fun scheduleAlarm(context: Context, taskId: Int, title: String, soundUri: String?, playSound: Boolean, triggerAtMillis: Long, taskType: String) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(context, AlarmReceiver::class.java).apply {
+            action = AlarmReceiver.ACTION_TRIGGER
             putExtra("TITLE", title); putExtra("SOUND_URI", soundUri); putExtra("PLAY_SOUND", playSound); putExtra("TASK_ID", taskId); putExtra("TASK_TYPE", taskType)
         }
         val pendingIntent = PendingIntent.getBroadcast(context, taskId, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -67,27 +65,26 @@ object AlarmScheduler {
         alarmManager.cancel(pendingIntent)
     }
 
-    private fun calculateNextAlarmTime(time: LocalTime, recurringDays: List<DayOfWeek>?, isDone: Boolean = false): Long? {
+    private fun calculateNextAlarmTime(time: LocalTime, recurringDays: List<DayOfWeek>?, isDoneForToday: Boolean): Long? {
         val now = LocalDateTime.now()
-        var nextAlarm = now.with(time)
+        var nextAlarmDateTime = now.with(time)
 
-        if (nextAlarm.isBefore(now) || isDone) {
-            nextAlarm = nextAlarm.plusDays(1)
+        if (nextAlarmDateTime.isBefore(now) || isDoneForToday) {
+            nextAlarmDateTime = nextAlarmDateTime.plusDays(1)
         }
 
         if (recurringDays.isNullOrEmpty()) {
-            return nextAlarm.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            return nextAlarmDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         }
 
-        for (i in 0..7) {
-            val checkDay = nextAlarm.dayOfWeek
-            val ourDay = try { DayOfWeek.valueOf(checkDay.name) } catch (e: Exception) { null }
-
-            if (ourDay != null && recurringDays.contains(ourDay)) {
-                return nextAlarm.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        for (i in 0 until 60) {
+            val currentDayOfWeek = nextAlarmDateTime.dayOfWeek
+            if (recurringDays.contains(currentDayOfWeek)) {
+                return nextAlarmDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
             }
-            nextAlarm = nextAlarm.plusDays(1)
+            nextAlarmDateTime = nextAlarmDateTime.plusDays(1)
         }
+
         return null
     }
 }
