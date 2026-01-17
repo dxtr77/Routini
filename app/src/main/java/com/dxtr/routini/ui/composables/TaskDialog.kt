@@ -45,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -154,30 +155,66 @@ fun TaskDialog(
 
                 Column {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Repeat on", style = MaterialTheme.typography.labelLarge)
+                    Text("Recurrence", style = MaterialTheme.typography.labelLarge)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceAround
-                    ) {
-                        availableDays.forEach { day ->
-                            val isSelected = specificDays.contains(day)
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp) // Slight increase for 3 letters
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (isSelected) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.surfaceVariant
-                                    )
-                                    .clickable { specificDays = if (isSelected) specificDays - day else specificDays + day },
-                                contentAlignment = Alignment.Center
+
+                    var useSpecificDays by remember { mutableStateOf(specificDays.isNotEmpty()) }
+
+                    Row(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, CircleShape).padding(4.dp)) {
+                         Box(
+                             contentAlignment = Alignment.Center,
+                             modifier = Modifier
+                                 .weight(1f)
+                                 .clip(CircleShape)
+                                 .background(if (!useSpecificDays) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                 .clickable { 
+                                     useSpecificDays = false 
+                                     specificDays = emptyList() // Clear specific days to follow routine
+                                 }
+                                 .padding(vertical = 8.dp)
+                         ) {
+                             Text("Follow Routine", color = if (!useSpecificDays) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+                         }
+                         Box(
+                             contentAlignment = Alignment.Center,
+                             modifier = Modifier
+                                 .weight(1f)
+                                 .clip(CircleShape)
+                                 .background(if (useSpecificDays) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                 .clickable { useSpecificDays = true }
+                                 .padding(vertical = 8.dp)
+                         ) {
+                             Text("Pick Days", color = if (useSpecificDays) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+                         }
+                    }
+
+                    AnimatedVisibility(visible = useSpecificDays) {
+                        Column {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceAround
                             ) {
-                                Text(
-                                    text = day.name.take(3).lowercase().replaceFirstChar { it.uppercase() },
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    style = MaterialTheme.typography.labelSmall
-                                )
+                                availableDays.sorted().forEach { day ->
+                                    val isSelected = specificDays.contains(day)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (isSelected) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.surfaceVariant
+                                            )
+                                            .clickable { specificDays = if (isSelected) specificDays - day else specificDays + day },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = day.name.take(3).lowercase().replaceFirstChar { it.uppercase() },
+                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

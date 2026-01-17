@@ -58,6 +58,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -112,22 +113,39 @@ fun RoutinesScreen(
             }
         )
     } else {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(items = routines, key = { it.id }) { routine ->
-                ModernRoutineCard(
-                    routine = routine,
-                    viewModel = viewModel,
-                    onNavigateToDetail = {
-                        navController.navigate(Screen.RoutineDetail.createRoute(routine.id))
-                    },
-                    onEdit = { onEditRoutine(routine) },
-                    onDelete = { viewModel.deleteRoutine(routine) }
+        androidx.compose.material3.Scaffold(
+            containerColor = Color.Transparent,
+            contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0.dp)
+        ) { padding ->
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    top = padding.calculateTopPadding() + 16.dp,
+                    bottom = 100.dp
                 )
+            ) {
+                item {
+                    Text(
+                        text = "My Routines",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+                items(items = routines, key = { it.id }) { routine ->
+                    ModernRoutineCard(
+                        routine = routine,
+                        viewModel = viewModel,
+                        onNavigateToDetail = {
+                            navController.navigate(Screen.RoutineDetail.createRoute(routine.id))
+                        },
+                        onEdit = { onEditRoutine(routine) },
+                        onDelete = { viewModel.deleteRoutine(routine) }
+                    )
+                }
             }
         }
     }
@@ -245,9 +263,17 @@ fun ModernRoutineCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(vertical = 4.dp)
             .clickable { onNavigateToDetail() },
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)
+        )
     ) {
         Row(
             modifier = Modifier
@@ -258,32 +284,39 @@ fun ModernRoutineCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = routine.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 SmartDayIndicator(routine.recurringDays)
             }
 
             if (totalTasks > 0) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(56.dp)) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(50.dp)) {
                     CircularProgressIndicator(
                         progress = { animatedProgress },
                         modifier = Modifier.fillMaxSize(),
-                        strokeWidth = 6.dp,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                        strokeWidth = 5.dp,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        color = MaterialTheme.colorScheme.primary
                     )
                     Text(
                         text = "${(animatedProgress * 100).toInt()}%",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             } 
 
             Box {
                 IconButton(onClick = { showMenu = true }) {
-                    Icon(painter = painterResource(id = AppIcons.MoreVert), contentDescription = "More Options")
+                    Icon(
+                        painter = painterResource(id = AppIcons.MoreVert), 
+                        contentDescription = "More Options",
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
                 }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                     DropdownMenuItem(

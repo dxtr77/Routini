@@ -45,6 +45,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _searchQuery.value = query
     }
 
+    init {
+        viewModelScope.launch {
+            try {
+                routineHistoryDao.cleanupOrphanedHistory()
+            } catch (e: Exception) { e.printStackTrace() }
+        }
+    }
+
     val weeklyStats: StateFlow<Map<LocalDate, Int>> = routineHistoryDao.getHistorySince(LocalDate.now().minusDays(6))
         .map { historyList ->
             historyList.groupBy { it.completionDate }.mapValues { it.value.size }
@@ -128,7 +136,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteRoutine(routine: Routine) = viewModelScope.launch {
         try {
+            routineHistoryDao.deleteHistoryForRoutine(routine.id)
             routineDao.deleteRoutine(routine)
+            routineHistoryDao.cleanupOrphanedHistory()
         } catch(e: Exception) { e.printStackTrace() }
     }
 
@@ -164,7 +174,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteRoutineTask(task: RoutineTask) = viewModelScope.launch {
+        routineHistoryDao.deleteHistoryForTask(task.id, "ROUTINE")
         routineDao.deleteRoutineTask(task)
+        routineHistoryDao.cleanupOrphanedHistory()
         alarmScheduler.cancelRoutineTaskAlarm(getApplication(), task)
     }
 
@@ -193,7 +205,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteStandaloneTask(task: StandaloneTask) = viewModelScope.launch {
+        routineHistoryDao.deleteHistoryForTask(task.id, "STANDALONE")
         standaloneTaskDao.deleteStandaloneTask(task)
+        routineHistoryDao.cleanupOrphanedHistory()
         alarmScheduler.cancelStandaloneTaskAlarm(getApplication(), task)
     }
 

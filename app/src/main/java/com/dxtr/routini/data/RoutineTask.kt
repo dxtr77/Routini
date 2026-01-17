@@ -2,6 +2,7 @@ package com.dxtr.routini.data
 
 import androidx.room.Entity
 import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -16,7 +17,8 @@ import java.time.LocalTime
             childColumns = ["routineId"],
             onDelete = ForeignKey.CASCADE
         )
-    ]
+    ],
+    indices = [Index("routineId")]
 )
 data class RoutineTask(
     @PrimaryKey(autoGenerate = true) override val id: Int = 0,

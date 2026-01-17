@@ -1,6 +1,7 @@
 package com.dxtr.routini.ui.composables
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,29 +30,38 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.dxtr.routini.data.RoutineTask
 import com.dxtr.routini.ui.theme.AppIcons
 import java.time.format.DateTimeFormatter
 
 @Composable
 fun QuickTaskItem(task: RoutineTask, onToggle: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit) {
-    val alpha = if (task.isDone) 0.5f else 1f
     var showDescription by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .alpha(alpha)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onTap = { showDescription = !showDescription },
                     onLongPress = { onEdit() }
                 )
             },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (task.isDone) 0.dp else 2.dp)
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (task.isDone)
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            else
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onToggle) {
                     Icon(
@@ -67,27 +77,41 @@ fun QuickTaskItem(task: RoutineTask, onToggle: () -> Unit, onEdit: () -> Unit, o
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = task.title,
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 17.sp,
+                            fontWeight = if (task.isDone) androidx.compose.ui.text.font.FontWeight.Normal else androidx.compose.ui.text.font.FontWeight.Medium
+                        ),
                         textDecoration = if (task.isDone) TextDecoration.LineThrough else null,
+                        color = if (task.isDone) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                }
 
-                    if (task.time != null) {
-                        Spacer(modifier = Modifier.height(4.dp))
+                if (task.time != null) {
+                    androidx.compose.foundation.layout.Box(
+                        modifier = Modifier
+                            .background(
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
                         Text(
                             text = task.time.format(DateTimeFormatter.ofPattern("HH:mm")),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
                         )
                     }
                 }
-
-                IconButton(onClick = onDelete) {
+                
+                // Optional: Delete button aligned far right if desired, or relying on long-press menu/swipe
+                 IconButton(onClick = onDelete) {
                     Icon(
                         painter = painterResource(id = AppIcons.Delete),
                         contentDescription = "Delete",
-                        tint = MaterialTheme.colorScheme.error
+                        tint = MaterialTheme.colorScheme.error.copy(alpha=0.7f)
                     )
                 }
             }
@@ -96,7 +120,7 @@ fun QuickTaskItem(task: RoutineTask, onToggle: () -> Unit, onEdit: () -> Unit, o
                     text = task.description ?: "",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 52.dp, top = 8.dp, end = 16.dp)
+                    modifier = Modifier.padding(start = 52.dp, top = 4.dp, end = 16.dp)
                 )
             }
         }

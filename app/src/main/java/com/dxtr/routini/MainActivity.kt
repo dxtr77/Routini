@@ -22,12 +22,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             RoutiniTheme {
                 val navController = rememberNavController()
-                Scaffold { innerPadding ->
-                     RoutiniNavHost(
-                         navController = navController,
-                         modifier = Modifier.padding(innerPadding)
-                     )
-                }
+                RoutiniNavHost(
+                    navController = navController
+                )
             }
         }
     }

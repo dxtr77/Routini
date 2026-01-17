@@ -55,6 +55,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dxtr.routini.MainViewModel
 import com.dxtr.routini.R
@@ -103,91 +104,93 @@ fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
     ) {
         Scaffold(
             containerColor = Color.Transparent,
+            contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0.dp), // Let LazyColumn handle insets
             snackbarHost = { SnackbarHost(snackbarHostState) }
         ) { padding ->
-            Column(
-                modifier = Modifier
-                    .padding(padding)
-                    .padding(horizontal = 16.dp)
-            ) {
-                Spacer(modifier = Modifier.height(16.dp))
-                // Greeting and Date Section
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = getGreeting(),
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Text(
-                            text = "Let's be productive today.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
-                        )
-                    }
-                    // Profile or additional icon could go here
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    DateNavigationBar(
-                        selectedDate = selectedDate,
-                        onDateClicked = { showDatePicker = true },
-                        onPreviousDay = { viewModel.onPreviousDay() },
-                        onNextDay = { viewModel.onNextDay() }
+                LazyColumn(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp), // Just horizontal padding on the container
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    contentPadding = PaddingValues(
+                        top = padding.calculateTopPadding() + 8.dp, // Add a little breathing room from status bar
+                        bottom = padding.calculateBottomPadding() + 80.dp
                     )
-                }
+                ) {
+                    item {
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Weekly Stats
-                val weeklyStats by viewModel.weeklyStats.collectAsState()
-                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    WeeklyStatsCard(weeklyStats)
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-
-                AnimatedVisibility(visible = tasks.isNotEmpty()) {
-                    Column {
+                        // Greeting and Date Section
                         Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                "Daily Progress",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                "${(progress * 100).toInt()}%",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary
+                            Column {
+                                Text(
+                                    text = getGreeting(),
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                                Text(
+                                    text = "Let's be productive today.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        GlassCard(modifier = Modifier.fillMaxWidth()) {
+                            DateNavigationBar(
+                                selectedDate = selectedDate,
+                                onDateClicked = { showDatePicker = true },
+                                onPreviousDay = { viewModel.onPreviousDay() },
+                                onNextDay = { viewModel.onNextDay() }
                             )
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        LinearProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(8.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
 
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 80.dp)
-                ) {
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Weekly Stats
+                        val weeklyStats = viewModel.weeklyStats.collectAsState().value
+                        GlassCard(modifier = Modifier.fillMaxWidth()) {
+                            WeeklyStatsCard(weeklyStats)
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        AnimatedVisibility(visible = tasks.isNotEmpty()) {
+                            Column {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        "Daily Progress",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        "${(progress * 100).toInt()}%",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                LinearProgressIndicator(
+                                    progress = { progress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(8.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
                     val standaloneTasks =
                         tasks.filterIsInstance<StandaloneTask>().filter { it.date != null }
                     if (standaloneTasks.isNotEmpty()) {
@@ -258,7 +261,6 @@ fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
                         }
                     }
                 }
-            }
         }
     }
 
@@ -321,7 +323,7 @@ fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
             fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(vertical = 8.dp)
+            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
         )
     }
 
@@ -391,20 +393,20 @@ fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp)
+                    .padding(vertical = 2.dp)
                     .clickable { isExpanded = !isExpanded },
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp), // Softer corners
                 colors = CardDefaults.cardColors(
                     containerColor = if (task.isDone)
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                     else
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.75f)
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.6f) // More transparent
                 ),
                 border = BorderStroke(
                     1.dp,
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f) // Subtle border
                 ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp) // Flat for glass effect
             ) {
                 Row(
                     modifier = Modifier.padding(16.dp),
@@ -416,14 +418,16 @@ fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
                         onCheckedChange = { onTaskStatusChanged(task, it) },
                         colors = CheckboxDefaults.colors(
                             checkedColor = MaterialTheme.colorScheme.primary,
-                            uncheckedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            uncheckedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            checkmarkColor = MaterialTheme.colorScheme.onPrimary
                         )
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = task.title,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp), // Slightly larger
                             fontWeight = if (task.isDone) FontWeight.Normal else FontWeight.Medium,
+                            textDecoration = if (task.isDone) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
                             color = if (task.isDone) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface
                         )
 
@@ -437,11 +441,21 @@ fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
                         }
                     }
                     task.time?.let { time ->
-                        Text(
-                            time.format(DateTimeFormatter.ofPattern("HH:mm")),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                time.format(DateTimeFormatter.ofPattern("HH:mm")),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
             }

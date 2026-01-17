@@ -8,6 +8,13 @@ import android.content.IntentFilter
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,16 +31,22 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dxtr.routini.receiver.AlarmReceiver
@@ -111,96 +124,123 @@ fun AlarmScreenContent(
     onStop: () -> Unit,
     onMarkDone: () -> Unit
 ) {
-    // This Box simulates a "Glass" / Blur effect over the user's wallpaper
-    // using a semi-transparent dark scrim and a gradient card.
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.85f)), // Dark scrim
+            .background(Color.Black),
         contentAlignment = Alignment.Center
     ) {
-
-        // Background Glow Effect (Optional visual flair)
+        // Pulsing Background Glow
         Box(
             modifier = Modifier
                 .size(300.dp)
-                .blur(radius = 80.dp) // API 31+ Blur
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), CircleShape)
+                .scale(pulseScale)
+                .blur(radius = 80.dp)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = pulseAlpha), CircleShape)
         )
 
-        // Main Alarm Card
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+        // Glass Card Container
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(32.dp)
+                .padding(32.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.1f) // Ultra-glassy
+            ),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+            shape = RoundedCornerShape(24.dp)
         ) {
-            Icon(
-                painter = painterResource(id = AppIcons.Alarm),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(64.dp)
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text(
-                text = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")),
-                style = MaterialTheme.typography.displayLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 80.sp
-                ),
-                color = Color.White
-            )
-
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineSmall,
-                color = Color.White.copy(alpha = 0.9f)
-            )
-
-            Spacer(modifier = Modifier.height(48.dp))
-
-            // Action Buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier
+                    .padding(24.dp)
             ) {
-                // STOP Button
-                Button(
-                    onClick = onStop,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer
-                    ),
-                    modifier = Modifier
-                        .height(56.dp)
-                        .weight(1f)
-                        .padding(end = 8.dp),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Icon(painter = painterResource(id = AppIcons.Close), contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Stop")
-                }
+                Icon(
+                    painter = painterResource(id = AppIcons.Alarm),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(48.dp)
+                )
 
-                // MARK DONE Button
-                Button(
-                    onClick = onMarkDone,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")),
+                    style = MaterialTheme.typography.displayLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 72.sp
                     ),
-                    modifier = Modifier
-                        .height(56.dp)
-                        .weight(1f)
-                        .padding(start = 8.dp),
-                    shape = RoundedCornerShape(16.dp)
+                    color = Color.White
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color.White.copy(alpha = 0.8f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // Action Buttons
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Icon(painter = painterResource(id = AppIcons.TaskAlt), contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Done")
+                    Button(
+                        onClick = onMarkDone,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Icon(painter = painterResource(id = AppIcons.TaskAlt), contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Done", fontSize = 18.sp)
+                    }
+
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = onStop,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Icon(painter = painterResource(id = AppIcons.Close), contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Stop Alarm")
+                    }
                 }
             }
         }

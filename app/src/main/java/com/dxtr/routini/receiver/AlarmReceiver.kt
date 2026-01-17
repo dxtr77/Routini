@@ -60,6 +60,15 @@ class AlarmReceiver : BroadcastReceiver() {
                     try {
                         val db = AppDatabase.getDatabase(context)
                         if (taskId != -1) {
+                            // Insert into History
+                            db.routineHistoryDao().insert(
+                                com.dxtr.routini.data.RoutineHistory(
+                                    taskId = taskId,
+                                    taskType = taskType ?: "STANDALONE",
+                                    completionDate = java.time.LocalDate.now()
+                                )
+                            )
+
                             when (taskType) {
                                 "ROUTINE" -> {
                                     val task = db.routineDao().getTaskById(taskId)
@@ -146,12 +155,13 @@ class AlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val doneIntent = Intent(context, AlarmActivity::class.java).apply {
+        // Target AlarmReceiver for background processing
+        val doneIntent = Intent(context, AlarmReceiver::class.java).apply {
             action = ACTION_MARK_DONE
             putExtra(EXTRA_TASK_ID, taskId)
             putExtra(EXTRA_TASK_TYPE, taskType)
         }
-        val donePendingIntent = PendingIntent.getActivity(
+        val donePendingIntent = PendingIntent.getBroadcast(
             context,
             taskId * 100, 
             doneIntent,

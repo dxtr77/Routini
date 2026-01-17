@@ -1,5 +1,6 @@
 package com.dxtr.routini.ui.screens
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +10,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -136,20 +147,88 @@ fun RoutineDetailScreen(
                     }
                 }
                 1 -> {
-                    LazyColumn(
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(allTasks, key = { "all_${it.id}" }) { task ->
-                            QuickTaskItem(
-                                task = task,
-                                onToggle = { viewModel.updateTaskStatus(task, !task.isDone, selectedDate) },
-                                onEdit = {
-                                    taskToEdit = task
-                                    showTaskDialog = true
-                                },
-                                onDelete = { viewModel.deleteRoutineTask(task) }
-                            )
+                    var selectedFilterDays by remember { mutableStateOf(emptySet<DayOfWeek>()) }
+                    
+                    Column {
+                        // Filter Bar
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                .horizontalScroll(rememberScrollState()),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // "All" Pill
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(if (selectedFilterDays.isEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f))
+                                    .clickable { selectedFilterDays = emptySet() }
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    "All",
+                                    color = if (selectedFilterDays.isEmpty()) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.labelLarge
+                                )
+                            }
+
+                            // Days
+                            routine.recurringDays.sorted().forEach { day ->
+                                val isSelected = selectedFilterDays.contains(day)
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.5f))
+                                        .clickable { 
+                                            selectedFilterDays = if (isSelected) selectedFilterDays - day else selectedFilterDays + day
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = day.name.take(3).lowercase().replaceFirstChar { it.uppercase() },
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+                            }
+                        }
+
+                        // Filter Logic
+                        val filteredTasks = if (selectedFilterDays.isEmpty()) {
+                            allTasks 
+                        } else {
+                            allTasks.filter { task ->
+                                val effectiveDays = if (task.specificDays.isNullOrEmpty()) routine.recurringDays else task.specificDays
+                                effectiveDays.any { it in selectedFilterDays }
+                            }
+                        }
+
+                        LazyColumn(
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(filteredTasks, key = { "all_${it.id}" }) { task ->
+                                QuickTaskItem(
+                                    task = task,
+                                    onToggle = { viewModel.updateTaskStatus(task, !task.isDone, selectedDate) },
+                                    onEdit = {
+                                        taskToEdit = task
+                                        showTaskDialog = true
+                                    },
+                                    onDelete = { viewModel.deleteRoutineTask(task) }
+                                )
+                            }
+                            
+                            if (filteredTasks.isEmpty() && selectedFilterDays.isNotEmpty()) {
+                                item { 
+                                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                                         Text("No tasks for selected days", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=0.7f))
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -232,16 +311,51 @@ fun RestDayCard(routine: Routine, onStartEarly: (DayOfWeek) -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Rest Day", style = MaterialTheme.typography.titleLarge)
-            Text("No tasks scheduled for today.", style = MaterialTheme.typography.bodyMedium)
+        Column(
+            modifier = Modifier.padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                painter = painterResource(id = AppIcons.Schedule),
+                contentDescription = null,
+                modifier = Modifier.size(48.dp),
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("Rest Day", style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "No tasks scheduled for today.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
             val nextRunDay = routine.recurringDays.firstOrNull { it > LocalDate.now().dayOfWeek } ?: routine.recurringDays.firstOrNull()
             if (nextRunDay != null) {
-                Text("Next session: ${nextRunDay.name.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }}", style = MaterialTheme.typography.bodyMedium)
-                Button(onClick = { onStartEarly(nextRunDay) }) {
-                    Text("Start ${nextRunDay.name.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }}'s Routine Now")
+                Spacer(modifier = Modifier.height(16.dp))
+                val dayName = nextRunDay.name.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                Text(
+                    "Next session: $dayName",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(
+                    onClick = { onStartEarly(nextRunDay) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+                ) {
+                    Text("Start $dayName's Routine Now")
                 }
             }
         }
