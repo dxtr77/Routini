@@ -10,6 +10,9 @@ import com.dxtr.routini.data.RoutineTask
 import com.dxtr.routini.data.StandaloneTask
 import com.dxtr.routini.data.Task
 import com.dxtr.routini.utils.AlarmScheduler
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
+import com.dxtr.routini.widget.TodayTasksWidgetProvider
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +34,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val standaloneTaskDao = AppDatabase.getDatabase(application).standaloneTaskDao()
     private val routineHistoryDao = AppDatabase.getDatabase(application).routineHistoryDao()
     private val alarmScheduler = AlarmScheduler
+    private val backupManager = com.dxtr.routini.data.BackupManager(application)
+
+    fun exportData(uri: android.net.Uri) = viewModelScope.launch {
+        try {
+            backupManager.exportData(uri)
+        } catch (e: Exception) { e.printStackTrace() }
+    }
+
+    fun importData(uri: android.net.Uri) = viewModelScope.launch {
+        try {
+            backupManager.importData(uri)
+            // Trigger a refresh if needed, but Flow/LiveData should handle it
+        } catch (e: Exception) { e.printStackTrace() }
+    }
+
+    fun exportRoutine(routineId: Int, uri: android.net.Uri) = viewModelScope.launch {
+        try {
+            backupManager.exportRoutine(routineId, uri)
+        } catch (e: Exception) { e.printStackTrace() }
+    }
+
+    private fun notifyWidgets() {
+        TodayTasksWidgetProvider.refreshWidget(getApplication<Application>())
+    }
 
     private val _isSavingTask = MutableStateFlow(false)
     val isSavingTask: StateFlow<Boolean> = _isSavingTask.asStateFlow()
@@ -45,12 +72,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _searchQuery.value = query
     }
 
+    private val _showAddTaskDialog = MutableStateFlow(false)
+    val showAddTaskDialog = _showAddTaskDialog.asStateFlow()
+
+    fun triggerAddTaskDialog(show: Boolean) {
+        _showAddTaskDialog.value = show
+    }
+
     init {
         viewModelScope.launch {
             try {
                 routineHistoryDao.cleanupOrphanedHistory()
             } catch (e: Exception) { e.printStackTrace() }
         }
+        notifyWidgets()
     }
 
     val weeklyStats: StateFlow<Map<LocalDate, Int>> = routineHistoryDao.getHistorySince(LocalDate.now().minusDays(6))
@@ -132,6 +167,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateRoutine(routine: Routine) = viewModelScope.launch {
         routineDao.updateRoutine(routine)
+        notifyWidgets()
     }
 
     fun deleteRoutine(routine: Routine) = viewModelScope.launch {
@@ -139,6 +175,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             routineHistoryDao.deleteHistoryForRoutine(routine.id)
             routineDao.deleteRoutine(routine)
             routineHistoryDao.cleanupOrphanedHistory()
+            notifyWidgets()
         } catch(e: Exception) { e.printStackTrace() }
     }
 
@@ -157,6 +194,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 alarmScheduler.scheduleRoutineTaskAlarm(getApplication(), newTask, routine?.recurringDays)
             }
         } catch (e: Exception) { e.printStackTrace() }
+        notifyWidgets()
         _isSavingTask.value = false
     }
 
@@ -170,6 +208,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             alarmScheduler.cancelRoutineTaskAlarm(getApplication(), task)
         }
+        notifyWidgets()
         _isSavingTask.value = false
     }
 
@@ -177,6 +216,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         routineHistoryDao.deleteHistoryForTask(task.id, "ROUTINE")
         routineDao.deleteRoutineTask(task)
         routineHistoryDao.cleanupOrphanedHistory()
+        notifyWidgets()
         alarmScheduler.cancelRoutineTaskAlarm(getApplication(), task)
     }
 
@@ -190,6 +230,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 alarmScheduler.scheduleStandaloneTaskAlarm(getApplication(), newTask)
             }
         } catch(e: Exception) { e.printStackTrace() }
+        notifyWidgets()
         _isSavingTask.value = false
     }
 
@@ -201,6 +242,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             alarmScheduler.cancelStandaloneTaskAlarm(getApplication(), task)
         }
+        notifyWidgets()
         _isSavingTask.value = false
     }
 
@@ -208,6 +250,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         routineHistoryDao.deleteHistoryForTask(task.id, "STANDALONE")
         standaloneTaskDao.deleteStandaloneTask(task)
         routineHistoryDao.cleanupOrphanedHistory()
+        notifyWidgets()
         alarmScheduler.cancelStandaloneTaskAlarm(getApplication(), task)
     }
 
@@ -246,6 +289,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             }
+            notifyWidgets()
         }
     }
 }

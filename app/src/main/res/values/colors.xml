@@ -2,4 +2,12 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    
+    <!-- Widget Light Colors -->
+    <color name="widget_bg">#BFFFFFFF</color>
+    <color name="widget_stroke">#1A000000</color>
+    <color name="widget_item_bg">#0D000000</color>
+    <color name="widget_text_primary">#222222</color>
+    <color name="widget_text_secondary">#77222222</color>
+    <color name="widget_icon_primary">#222222</color>
 </resources>

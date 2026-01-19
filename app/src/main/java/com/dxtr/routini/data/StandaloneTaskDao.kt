@@ -20,6 +20,9 @@ interface StandaloneTaskDao {
     @Query("SELECT * FROM standalone_tasks WHERE date = :date ORDER BY time ASC")
     fun getStandaloneTasksForDate(date: LocalDate): Flow<List<StandaloneTask>>
 
+    @Query("SELECT * FROM standalone_tasks WHERE date = :date ORDER BY time ASC")
+    suspend fun getStandaloneTasksForDateSuspend(date: LocalDate): List<StandaloneTask>
+
     @Query("SELECT * FROM standalone_tasks WHERE id = :id")
     suspend fun getTaskById(id: Int): StandaloneTask?
 

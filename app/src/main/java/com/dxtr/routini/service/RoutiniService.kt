@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
@@ -13,18 +14,25 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.net.Uri
+import android.os.Build
 import android.os.IBinder
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.net.toUri
 import com.dxtr.routini.MainActivity
 import com.dxtr.routini.R
+import com.dxtr.routini.receiver.AlarmReceiver
+import com.dxtr.routini.ui.AlarmActivity
 
 class RoutiniService : Service() {
 
     private var mediaPlayer: MediaPlayer? = null
     private var audioManager: AudioManager? = null
     private var focusRequest: AudioFocusRequest? = null
+    private var vibrator: Vibrator? = null
 
     override fun onBind(intent: Intent?): IBinder? {
         return null
@@ -33,6 +41,13 @@ class RoutiniService : Service() {
     override fun onCreate() {
         super.onCreate()
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+        vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+            vibratorManager.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(VIBRATOR_SERVICE) as Vibrator
+        }
         createNotificationChannel()
 
         // FIX: Add foregroundServiceType for Android 14+ compliance
@@ -48,12 +63,14 @@ class RoutiniService : Service() {
         if (action == ACTION_PLAY) {
             val soundUriString = intent.getStringExtra(EXTRA_SOUND_URI)
             val title = intent.getStringExtra(EXTRA_TITLE) ?: "Alarm"
+            val taskId = intent.getIntExtra(EXTRA_TASK_ID, -1)
+            val taskType = intent.getStringExtra(EXTRA_TASK_TYPE)
 
             playSound(soundUriString)
+            startVibration()
 
-            val notification = createNotification("Alarm: $title", "Playing alarm sound. Tap to open.")
-            val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.notify(NOTIFICATION_ID, notification)
+            val notification = createAlarmNotification(title, taskId, taskType)
+            startForeground(NOTIFICATION_ID, notification)
         } else if (action == ACTION_STOP) {
             stopSound()
             stopSelf()
@@ -136,8 +153,24 @@ class RoutiniService : Service() {
         }
     }
 
+    private fun startVibration() {
+        stopVibration() // Stop any existing vibration
+        val pattern = longArrayOf(0, 500, 500) // Vibrate 500ms, Pause 500ms
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0)) // 0 means repeat
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator?.vibrate(pattern, 0)
+        }
+    }
+
+    private fun stopVibration() {
+        vibrator?.cancel()
+    }
+
     private fun stopSound() {
         try {
+            stopVibration()
             if (mediaPlayer?.isPlaying == true) {
                 mediaPlayer?.stop()
             }
@@ -164,6 +197,8 @@ class RoutiniService : Service() {
         val importance = NotificationManager.IMPORTANCE_HIGH
         val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
             description = descriptionText
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 500)
         }
         val notificationManager: NotificationManager =
             getSystemService(NOTIFICATION_SERVICE) as NotificationManager
@@ -184,11 +219,67 @@ class RoutiniService : Service() {
             .build()
     }
 
+    private fun createAlarmNotification(title: String, taskId: Int, taskType: String?): Notification {
+        val fullScreenIntent = Intent(this, AlarmActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("TITLE", title)
+            putExtra(AlarmReceiver.EXTRA_TASK_ID, taskId)
+            putExtra(AlarmReceiver.EXTRA_TASK_TYPE, taskType)
+        }
+        
+        val fullScreenPendingIntent = PendingIntent.getActivity(
+            this,
+            taskId * 1000,
+            fullScreenIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val doneIntent = Intent(this, AlarmReceiver::class.java).apply {
+            action = AlarmReceiver.ACTION_MARK_DONE
+            putExtra(AlarmReceiver.EXTRA_TASK_ID, taskId)
+            putExtra(AlarmReceiver.EXTRA_TASK_TYPE, taskType)
+        }
+        val donePendingIntent = PendingIntent.getBroadcast(
+            this,
+            taskId * 100,
+            doneIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val stopIntent = Intent(this, AlarmReceiver::class.java).apply {
+            action = AlarmReceiver.ACTION_STOP
+            putExtra(AlarmReceiver.EXTRA_TASK_ID, taskId)
+        }
+        val stopPendingIntent = PendingIntent.getBroadcast(
+            this,
+            taskId,
+            stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle(title)
+            .setContentText("Alarm is ringing!")
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setFullScreenIntent(fullScreenPendingIntent, true)
+            .setContentIntent(fullScreenPendingIntent)
+            .setOngoing(true)
+            .setVibrate(longArrayOf(0, 500))
+            .setDeleteIntent(stopPendingIntent)
+            .addAction(R.drawable.ic_launcher_foreground, "Mark as Done", donePendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent)
+            .build()
+    }
+
     companion object {
         const val ACTION_PLAY = "com.dxtr.routini.service.PLAY"
         const val ACTION_STOP = "com.dxtr.routini.service.STOP"
         const val EXTRA_SOUND_URI = "EXTRA_SOUND_URI"
         const val EXTRA_TITLE = "EXTRA_TITLE"
+        const val EXTRA_TASK_ID = "EXTRA_TASK_ID"
+        const val EXTRA_TASK_TYPE = "EXTRA_TASK_TYPE"
 
         private const val CHANNEL_ID = "RoutiniAlarmChannel"
         private const val NOTIFICATION_ID = 1

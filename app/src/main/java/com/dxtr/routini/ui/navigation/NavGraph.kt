@@ -13,7 +13,8 @@ import com.dxtr.routini.ui.screens.RoutineDetailScreen
 @Composable
 fun RoutiniNavHost(
     navController: NavHostController,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: com.dxtr.routini.MainViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
     NavHost(
         navController = navController,
@@ -21,7 +22,7 @@ fun RoutiniNavHost(
         modifier = modifier
     ) {
         composable(Screen.Home.route) {
-            HomeScreen(navController = navController)
+            HomeScreen(navController = navController, viewModel = viewModel)
         }
         composable(
             route = Screen.RoutineDetail.route,

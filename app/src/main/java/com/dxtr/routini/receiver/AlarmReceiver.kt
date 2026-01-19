@@ -15,6 +15,7 @@ import com.dxtr.routini.data.AppDatabase
 import com.dxtr.routini.service.RoutiniService
 import com.dxtr.routini.ui.AlarmActivity
 import com.dxtr.routini.utils.AlarmScheduler
+import com.dxtr.routini.widget.TodayTasksWidgetProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -87,6 +88,8 @@ class AlarmReceiver : BroadcastReceiver() {
                                      }
                                 }
                             }
+                            // Refresh Widget to reflect completed state
+                            TodayTasksWidgetProvider.refreshWidget(context)
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error updating task in background", e)
@@ -103,15 +106,27 @@ class AlarmReceiver : BroadcastReceiver() {
                 val title = intent.getStringExtra("TITLE") ?: "Routini Alarm"
                 val playSound = intent.getBooleanExtra("PLAY_SOUND", false)
 
-                showNotification(context, title, playSound, taskId, taskType)
-
                 if (playSound) {
                     val serviceIntent = Intent(context, RoutiniService::class.java).apply {
                         this.action = RoutiniService.ACTION_PLAY
                         putExtra(RoutiniService.EXTRA_SOUND_URI, soundUriString)
                         putExtra(RoutiniService.EXTRA_TITLE, title)
+                        putExtra(RoutiniService.EXTRA_TASK_ID, taskId)
+                        putExtra(RoutiniService.EXTRA_TASK_TYPE, taskType)
                     }
                     context.startForegroundService(serviceIntent)
+
+                    val activityIntent = Intent(context, AlarmActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
+                                Intent.FLAG_ACTIVITY_CLEAR_TOP or 
+                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                        putExtra("TITLE", title)
+                        putExtra(EXTRA_TASK_ID, taskId)
+                        putExtra(EXTRA_TASK_TYPE, taskType)
+                    }
+                    context.startActivity(activityIntent)
+                } else {
+                    showNotification(context, title, playSound, taskId, taskType)
                 }
             }
         }
@@ -125,12 +140,14 @@ class AlarmReceiver : BroadcastReceiver() {
         taskId: Int,
         taskType: String?
     ) {
-        val channelId = "RoutiniAlarmChannel"
+        val channelId = if (playSound) "RoutiniAlarmChannel" else "RoutiniTaskChannel"
+        val channelName = if (playSound) "Routini Alarms" else "Routini Tasks"
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        val channel = NotificationChannel(channelId, "Routini Alarms", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "Notifications for scheduled tasks"
+        val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_HIGH).apply {
+            description = if (playSound) "Active alarms" else "Task reminders"
             enableVibration(true)
+            vibrationPattern = longArrayOf(0, 500)
             setBypassDnd(true)
             if (playSound) {
                 val audioAttributes = AudioAttributes.Builder()
@@ -185,10 +202,14 @@ class AlarmReceiver : BroadcastReceiver() {
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
             .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setVibrate(longArrayOf(0, 500))
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setFullScreenIntent(fullScreenPendingIntent, true) 
             .addAction(R.drawable.ic_launcher_foreground, "Mark as Done", donePendingIntent)
+            
+        if (playSound) {
+            builder.setFullScreenIntent(fullScreenPendingIntent, true) 
+        }
             
         if (playSound && stopPendingIntent != null) {
             builder

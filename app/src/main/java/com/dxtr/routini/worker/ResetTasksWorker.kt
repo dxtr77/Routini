@@ -34,6 +34,7 @@ class ResetTasksWorker(
             
             // Standalone tasks are not rescheduled as they are date-specific or manual one-offs.
 
+            com.dxtr.routini.widget.TodayTasksWidgetProvider.refreshWidget(appContext)
 
             Result.success()
         } catch (e: Exception) {

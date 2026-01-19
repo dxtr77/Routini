@@ -9,6 +9,13 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -30,6 +37,7 @@ import com.dxtr.routini.ui.theme.AppIcons
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     navController: NavController,
@@ -41,8 +49,57 @@ fun HomeScreen(
     var showTaskDialog by remember { mutableStateOf(false) }
     var routineToEdit by remember { mutableStateOf<Routine?>(null) }
     val isSavingTask by viewModel.isSavingTask.collectAsState()
+    val showAddTaskDialogTrigger by viewModel.showAddTaskDialog.collectAsState()
+
+    androidx.compose.runtime.LaunchedEffect(showAddTaskDialogTrigger) {
+        if (showAddTaskDialogTrigger) {
+            showTaskDialog = true
+            viewModel.triggerAddTaskDialog(false)
+        }
+    }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var showMenu by remember { mutableStateOf(false) }
+
+    val exportAllLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        uri?.let { viewModel.exportData(it) }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { viewModel.importData(it) }
+    }
 
     Scaffold(
+        topBar = {
+            androidx.compose.material3.CenterAlignedTopAppBar(
+                title = { Text("Routini") },
+                actions = {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(painter = painterResource(id = AppIcons.MoreVert), contentDescription = "More")
+                    }
+                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Export All Data") },
+                            onClick = {
+                                showMenu = false
+                                exportAllLauncher.launch("routini_backup_${LocalDate.now()}.json")
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Import Data") },
+                            onClick = {
+                                showMenu = false
+                                importLauncher.launch(arrayOf("application/json"))
+                            }
+                        )
+                    }
+                }
+            )
+        },
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(

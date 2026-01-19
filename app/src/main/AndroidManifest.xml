@@ -13,6 +13,7 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" android:foregroundServiceType="mediaPlayback" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:name=".RoutiniApplication"
@@ -41,25 +42,59 @@
             android:showOnLockScreen="true"
             android:launchMode="singleTop"
             android:screenOrientation="portrait"
-            android:theme="@style/Theme.Routini.Alarm" />
+            android:theme="@style/Theme.Routini.Alarm"
+            android:directBootAware="true" />
 
         <receiver
             android:name=".receiver.AlarmReceiver"
             android:enabled="true"
-            android:exported="false" />
+            android:exported="false"
+            android:directBootAware="true" />
         
         <receiver
             android:name=".receiver.BootReceiver"
             android:enabled="true"
-            android:exported="true">
+            android:exported="true"
+            android:directBootAware="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
 
         <service
             android:name=".service.RoutiniService"
             android:foregroundServiceType="mediaPlayback" 
+            android:exported="false"
+            android:directBootAware="true" />
+
+        <receiver
+            android:name=".widget.TodayTasksWidgetProvider"
+            android:exported="true"
+            android:label="Today's Tasks">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="com.dxtr.routini.widget.FILTER_ALL" />
+                <action android:name="com.dxtr.routini.widget.FILTER_ROUTINE" />
+                <action android:name="com.dxtr.routini.widget.TOGGLE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/today_tasks_widget_info" />
+        </receiver>
+
+        <service
+            android:name=".widget.TodayTasksWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS"
+            android:exported="false" />
+
+        <service
+            android:name=".widget.WidgetMenuService"
+            android:permission="android.permission.BIND_REMOTEVIEWS"
             android:exported="false" />
     </application>
 

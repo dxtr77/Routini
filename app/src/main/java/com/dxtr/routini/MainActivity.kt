@@ -10,12 +10,15 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
 import com.dxtr.routini.ui.navigation.RoutiniNavHost
 import com.dxtr.routini.ui.theme.RoutiniTheme
+import androidx.lifecycle.ViewModelProvider
 
 class MainActivity : ComponentActivity() {
+    private lateinit var viewModel: MainViewModel
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Service Removed: "Keep-Alive" service is no longer needed as AlarmManager handles wakeups.
+        viewModel = ViewModelProvider(this)[MainViewModel::class.java]
+        handleIntent(intent)
 
         enableEdgeToEdge()
 
@@ -23,9 +26,21 @@ class MainActivity : ComponentActivity() {
             RoutiniTheme {
                 val navController = rememberNavController()
                 RoutiniNavHost(
-                    navController = navController
+                    navController = navController,
+                    viewModel = viewModel
                 )
             }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: android.content.Intent?) {
+        if (intent?.action == "com.dxtr.routini.ACTION_ADD_TASK") {
+            viewModel.triggerAddTaskDialog(true)
         }
     }
 }

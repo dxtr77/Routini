@@ -102,6 +102,18 @@ fun RoutinesScreen(
         }
     }
 
+    var routineToExport by remember { mutableStateOf<Routine?>(null) }
+    val exportRoutineLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        uri?.let { 
+            routineToExport?.let { routine ->
+                viewModel.exportRoutine(routine.id, it) 
+            }
+        }
+        routineToExport = null
+    }
+
     if (routines.isEmpty()) {
         EmptyState(
             message = "No routines yet. Tap '+' to create one!",
@@ -143,7 +155,11 @@ fun RoutinesScreen(
                             navController.navigate(Screen.RoutineDetail.createRoute(routine.id))
                         },
                         onEdit = { onEditRoutine(routine) },
-                        onDelete = { viewModel.deleteRoutine(routine) }
+                        onDelete = { viewModel.deleteRoutine(routine) },
+                        onExport = {
+                             routineToExport = routine
+                             exportRoutineLauncher.launch("${routine.name.replace(" ", "_").lowercase()}.json")
+                        }
                     )
                 }
             }
@@ -241,7 +257,8 @@ fun ModernRoutineCard(
     viewModel: MainViewModel,
     onNavigateToDetail: () -> Unit, 
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onExport: () -> Unit
 ) {
     val tasks by viewModel.getTasksForRoutine(routine.id).collectAsState(initial = emptyList())
     val today = java.time.LocalDate.now()
@@ -326,6 +343,14 @@ fun ModernRoutineCard(
                             showMenu = false 
                         },
                         leadingIcon = { Icon(painterResource(id = AppIcons.Edit), contentDescription = null) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Export") },
+                        onClick = {
+                            onExport()
+                            showMenu = false
+                        },
+                        leadingIcon = { Icon(painterResource(id = AppIcons.ArrowForward), contentDescription = null) }
                     )
                     DropdownMenuItem(
                         text = { Text("Delete") },

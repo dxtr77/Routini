@@ -112,6 +112,12 @@ class AlarmActivity : ComponentActivity() {
     private fun turnScreenOnAndKeyguard() {
         setShowWhenLocked(true)
         setTurnScreenOn(true)
+        window.addFlags(
+            android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            android.view.WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON or
+            android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+        )
         with(getSystemService(KEYGUARD_SERVICE) as KeyguardManager) {
             requestDismissKeyguard(this@AlarmActivity, null)
         }
