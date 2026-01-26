@@ -37,6 +37,9 @@ import com.dxtr.routini.ui.composables.EmptyState
 import com.dxtr.routini.ui.composables.GlassCard
 import com.dxtr.routini.ui.navigation.Screen
 import com.dxtr.routini.ui.theme.AppIcons
+import com.dxtr.routini.utils.reorderable
+import com.dxtr.routini.utils.reorderableItem
+import com.dxtr.routini.utils.draggableHandle
 import java.time.DayOfWeek
 
 @Composable
@@ -98,75 +101,123 @@ fun RoutinesScreen(
             containerColor = Color.Transparent,
             contentWindowInsets = WindowInsets(0.dp)
         ) { padding ->
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(
-                    top = padding.calculateTopPadding() + 16.dp,
-                    bottom = 100.dp
-                )
-            ) {
-                item {
-                    Text(
-                        text = "My Routines",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                }
+
                 
-                if (routines.isEmpty() && searchQuery.isNotEmpty()) {
+                // Reorder State
+                val lazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
+                val reorderState = com.dxtr.routini.utils.rememberReorderableLazyListState(
+                    lazyListState = lazyListState,
+                    onMove = { from, to ->
+                        if (searchQuery.isEmpty()) {
+                            // Adjust index for headers if any. Here we have "My Routines" header at index 0 and maybe empty search results.
+                            // The itemsIndexed starts after the header. "My Routines" is item 0.
+                            // So item at index X in list corresponds to index X-1 in routines list?
+                            // Let's check layout.
+                            
+                            // itemsIndexed is called. LazyColumn has:
+                            // item { header } -> index 0
+                            // itemsIndexed -> index 1..N
+                            
+                            // onMove gives raw indices in the LazyColumn.
+                            // if from is 1, it corresponds to routine at index 0.
+                            
+                            val headerCount = 1 // "My Routines"
+                            val realFrom = from - headerCount
+                            val realTo = to - headerCount
+                            
+                            if (realFrom >= 0 && realTo >= 0 && realFrom < routines.size && realTo < routines.size) {
+                                viewModel.reorderRoutines(realFrom, realTo)
+                            }
+                        }
+                    }
+                )
+
+                LazyColumn(
+                    state = lazyListState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(
+                        top = padding.calculateTopPadding() + 16.dp,
+                        bottom = 100.dp
+                    )
+                ) {
                     item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(32.dp),
-                            contentAlignment = Alignment.Center
+                        Text(
+                            text = "My Routines",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+
+                    if (routines.isEmpty() && searchQuery.isNotEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No routines found for \"$searchQuery\"",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    
+                    itemsIndexed(items = routines, key = { _, it -> it.id }) { index, routine ->
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = true,
+                            enter = androidx.compose.animation.fadeIn() + 
+                                    androidx.compose.animation.slideInVertically(
+                                        initialOffsetY = { it / 4 },
+                                        animationSpec = androidx.compose.animation.core.spring(
+                                            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy
+                                        )
+                                    ),
+                             modifier = Modifier.then(
+                                 if (searchQuery.isEmpty()) Modifier.reorderableItem(reorderState, routine.id) else Modifier
+                             )
                         ) {
-                            Text(
-                                text = "No routines found for \"$searchQuery\"",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            ModernRoutineCard(
+                                routine = routine,
+                                viewModel = viewModel,
+                                onNavigateToDetail = {
+                                    navController.navigate(Screen.RoutineDetail.createRoute(routine.id))
+                                },
+                                onEdit = { onEditRoutine(routine) },
+                                onDelete = { 
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    routineToDelete = routine 
+                                },
+                                onExport = {
+                                     routineToExport = routine
+                                     exportRoutineLauncher.launch("${routine.name.replace(" ", "_").lowercase()}.json")
+                                },
+                                onMoveUp = { viewModel.moveRoutineUp(routine) },
+                                onMoveDown = { viewModel.moveRoutineDown(routine) },
+                                canMoveUp = index > 0,
+                                canMoveDown = index < routines.size - 1,
+                                dragHandle = if (searchQuery.isEmpty()) {
+                                    {
+                                        Icon(
+                                            painter = painterResource(id = AppIcons.DragHandle),
+                                            contentDescription = "Drag to reorder",
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .draggableHandle(reorderState, index + 1), // +1 for header offset
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                        )
+                                    }
+                                } else null
                             )
                         }
                     }
                 }
-                itemsIndexed(items = routines, key = { _, it -> it.id }) { index, routine ->
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = true,
-                        enter = androidx.compose.animation.fadeIn() + 
-                                androidx.compose.animation.slideInVertically(
-                                    initialOffsetY = { it / 4 },
-                                    animationSpec = androidx.compose.animation.core.spring(
-                                        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy
-                                    )
-                                )
-                    ) {
-                        ModernRoutineCard(
-                            routine = routine,
-                            viewModel = viewModel,
-                            onNavigateToDetail = {
-                                navController.navigate(Screen.RoutineDetail.createRoute(routine.id))
-                            },
-                            onEdit = { onEditRoutine(routine) },
-                            onDelete = { 
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                routineToDelete = routine 
-                            },
-                            onExport = {
-                                 routineToExport = routine
-                                 exportRoutineLauncher.launch("${routine.name.replace(" ", "_").lowercase()}.json")
-                            },
-                            onMoveUp = { viewModel.moveRoutineUp(routine) },
-                            onMoveDown = { viewModel.moveRoutineDown(routine) },
-                            canMoveUp = index > 0,
-                            canMoveDown = index < routines.size - 1
-                        )
-                    }
-                }
-            }
         }
     }
     
@@ -261,7 +312,8 @@ fun ModernRoutineCard(
     onMoveUp: () -> Unit = {},
     onMoveDown: () -> Unit = {},
     canMoveUp: Boolean = false,
-    canMoveDown: Boolean = false
+    canMoveDown: Boolean = false,
+    dragHandle: @Composable (() -> Unit)? = null
 ) {
     val tasks by viewModel.getTasksForRoutine(routine.id).collectAsState(initial = emptyList())
     val today = java.time.LocalDate.now()
@@ -281,12 +333,24 @@ fun ModernRoutineCard(
     var showMenu by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
 
-    GlassCard(onClick = onNavigateToDetail) {
-        Column(modifier = Modifier.animateContentSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (dragHandle != null) {
+            dragHandle()
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+
+        GlassCard(
+            onClick = onNavigateToDetail,
+            modifier = Modifier.weight(1f)
+        ) {
+            Column(modifier = Modifier.animateContentSize()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = routine.name,
@@ -401,6 +465,7 @@ fun ModernRoutineCard(
                          }
                      }
                 }
+                 }
             }
         }
     }

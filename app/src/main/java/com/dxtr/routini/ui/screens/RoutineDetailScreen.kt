@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Button
@@ -57,6 +58,9 @@ import com.dxtr.routini.ui.composables.TaskDialog
 import com.dxtr.routini.ui.theme.AppIcons
 import java.time.DayOfWeek
 import java.time.LocalDate
+import com.dxtr.routini.utils.reorderable
+import com.dxtr.routini.utils.reorderableItem
+import com.dxtr.routini.utils.draggableHandle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -146,20 +150,50 @@ fun RoutineDetailScreen(
                                 Text("No tasks for ${if (selectedDate == today) "today" else "this day"}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         } else {
+                            // Reorder State for Today tab
+                            val lazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
+                            val reorderState = com.dxtr.routini.utils.rememberReorderableLazyListState(
+                                lazyListState = lazyListState,
+                                onMove = { from, to ->
+                                    if (selectedDate == today) {
+                                        viewModel.reorderRoutineTasks(routine.id, from, to, tasksForSelectedDate)
+                                    }
+                                }
+                            )
+
                             LazyColumn(
+                                state = lazyListState,
                                 contentPadding = PaddingValues(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                items(tasksForSelectedDate, key = { it.id }) { task ->
-                                    QuickTaskItem(
-                                        task = task,
-                                        onToggle = { viewModel.updateTaskStatus(task, !task.isDone, selectedDate) },
-                                        onEdit = {
-                                            taskToEdit = task
-                                            showTaskDialog = true
-                                        },
-                                        onDelete = { viewModel.deleteRoutineTask(task) }
-                                    )
+                                itemsIndexed(tasksForSelectedDate, key = { _, task -> task.id }) { index, task ->
+                                    Box(
+                                        modifier = Modifier.then(
+                                            if (selectedDate == today) Modifier.reorderableItem(reorderState, task.id) else Modifier
+                                        )
+                                    ) {
+                                        QuickTaskItem(
+                                            task = task,
+                                            onToggle = { viewModel.updateTaskStatus(task, !task.isDone, selectedDate) },
+                                            onEdit = {
+                                                taskToEdit = task
+                                                showTaskDialog = true
+                                            },
+                                            onDelete = { viewModel.deleteRoutineTask(task) },
+                                            dragHandle = if (selectedDate == today) {
+                                                {
+                                                    Icon(
+                                                        painter = painterResource(id = AppIcons.DragHandle),
+                                                        contentDescription = "Drag to reorder",
+                                                        modifier = Modifier
+                                                            .size(24.dp)
+                                                            .draggableHandle(reorderState, index),
+                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                                    )
+                                                }
+                                            } else null
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -226,9 +260,9 @@ fun RoutineDetailScreen(
 
                         // Filter Logic
                         val filteredTasks = (if (selectedFilterDays.isEmpty()) {
-                            allTasks 
+                            allTasks.sortedBy { it.sortOrder }
                         } else {
-                            allTasks.filter { task ->
+                            allTasks.sortedBy { it.sortOrder }.filter { task ->
                                 val effectiveDays = if (task.specificDays.isNullOrEmpty()) routine.recurringDays else task.specificDays
                                 effectiveDays.any { it in selectedFilterDays }
                             }
@@ -237,12 +271,26 @@ fun RoutineDetailScreen(
                                         else history.any { it.taskId == task.id && it.taskType == "ROUTINE" }
                             task.copy(isDone = isDone)
                         }
+                        
+                        // We need a LazyListState for the Column
+                        val lazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
+                        
+                        // Reorder State
+                        val reorderState = com.dxtr.routini.utils.rememberReorderableLazyListState(
+                            lazyListState = lazyListState,
+                            onMove = { from, to ->
+                                if (selectedFilterDays.isEmpty()) {
+                                     viewModel.reorderRoutineTasks(routine.id, from, to, filteredTasks)
+                                }
+                            }
+                        )
 
                         LazyColumn(
+                            state = lazyListState,
                             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(filteredTasks, key = { "all_${it.id}" }) { task ->
+                            items(filteredTasks, key = { it.id }) { task ->
                                 QuickTaskItem(
                                     task = task,
                                     onToggle = { viewModel.updateTaskStatus(task, !task.isDone, selectedDate) },
@@ -267,6 +315,8 @@ fun RoutineDetailScreen(
             }
         }
     }
+    
+    // ... dialogs ...
 
     if (showTaskDialog) {
         val currentTask = taskToEdit
@@ -301,7 +351,8 @@ fun RoutineDetailScreen(
                     customSoundUri = sound,
                     shouldPlaySound = playSound,
                     shouldVibrate = shouldVibrate,
-                    specificDays = specificDays
+                    specificDays = specificDays,
+                    sortOrder = if (allTasks.isEmpty()) 0 else (allTasks.maxOfOrNull { it.sortOrder } ?: 0) + 1
                 )
 
                 if (currentTask == null) {

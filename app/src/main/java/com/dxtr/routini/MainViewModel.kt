@@ -456,4 +456,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             notifyWidgets()
         }
     }
+
+    fun reorderRoutines(fromIndex: Int, toIndex: Int) = viewModelScope.launch {
+        val currentList = routines.value.sortedBy { it.sortOrder }.toMutableList()
+        if (fromIndex == toIndex || fromIndex !in currentList.indices || toIndex !in currentList.indices) return@launch
+
+        val item = currentList.removeAt(fromIndex)
+        currentList.add(toIndex, item)
+
+        currentList.forEachIndexed { index, routine ->
+            if (routine.sortOrder != index) {
+                routineDao.updateRoutine(routine.copy(sortOrder = index))
+            }
+        }
+        notifyWidgets()
+    }
+
+    fun reorderRoutineTasks(routineId: Int, fromIndex: Int, toIndex: Int, tasks: List<RoutineTask>) = viewModelScope.launch {
+        val currentList = tasks.toMutableList()
+        if (fromIndex == toIndex || fromIndex !in currentList.indices || toIndex !in currentList.indices) return@launch
+
+        val item = currentList.removeAt(fromIndex)
+        currentList.add(toIndex, item)
+
+        currentList.forEachIndexed { index, task ->
+            if (task.sortOrder != index) {
+                routineDao.updateRoutineTask(task.copy(sortOrder = index))
+            }
+        }
+        notifyWidgets()
+    }
 }

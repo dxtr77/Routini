@@ -7,6 +7,7 @@ object AppIcons {
     val Alarm = R.drawable.outline_alarm_24
     val CalendarMonth = R.drawable.baseline_calendar_month_24
     val CheckCircle = R.drawable.baseline_check_circle_24
+    val DragHandle = R.drawable.baseline_drag_handle_24
     val Close = R.drawable.baseline_close_24
     val Delete = R.drawable.baseline_delete_24
     val Edit = R.drawable.baseline_edit_24
