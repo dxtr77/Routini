@@ -34,6 +34,9 @@ interface StandaloneTaskDao {
 
     @Query("UPDATE standalone_tasks SET isDone = 0")
     suspend fun resetAllTasks()
+    
+    @Query("SELECT date, COUNT(*) as count FROM standalone_tasks WHERE date IS NOT NULL GROUP BY date")
+    fun getTaskCountsPerDate(): Flow<List<TaskCountByDate>>
 
     @Delete
     suspend fun deleteStandaloneTask(task: StandaloneTask)

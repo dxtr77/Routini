@@ -56,4 +56,12 @@
     <string name="play_sound_label">Play Sound</string>
     <string name="select_sound_action">Select Sound</string>
     <string name="selected_sound_label">Selected: %1$s</string>
+    
+    <!-- Widget Strings -->
+    <string name="widget_description">View and manage your daily tasks</string>
+    <string name="widget_title">Routini</string>
+    <string name="widget_filter_desc">Change filter</string>
+    <string name="widget_filter_today">Today</string>
+    <string name="widget_filter_tomorrow">Tomorrow</string>
+    <string name="widget_no_tasks">No tasks to display</string>
 </resources>

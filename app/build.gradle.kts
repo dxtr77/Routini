@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -9,12 +11,29 @@ android {
     namespace = "com.dxtr.routini"
     compileSdk = 36
 
+    buildFeatures {
+        viewBinding = false
+        dataBinding = false
+        compose = true
+        buildConfig = true
+    }
+
+    val localProperties = Properties()
+    rootProject.file("local.properties").let { file ->
+        if (file.exists()) {
+            file.inputStream().use { localProperties.load(it) }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.dxtr.routini"
         minSdk = 29
         targetSdk = 35
         versionCode = 1
-        versionName = "0.2-beta"
+        versionName = "1.0"
+
+        buildConfigField("String", "BUY_ME_A_COFFEE_URL", "\"${localProperties.getProperty("BUY_ME_A_COFFEE_URL") ?: ""}\"")
+        buildConfigField("String", "USDT_ADDRESS", "\"${localProperties.getProperty("USDT_ADDRESS") ?: ""}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -41,18 +60,16 @@ android {
             )
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+
     kotlinOptions {
         jvmTarget = "11"
     }
-    buildFeatures {
-        viewBinding = false
-        dataBinding = false
-        compose = true
-    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -65,16 +82,14 @@ val abiCodes = mapOf("armeabi-v7a" to 1, "arm64-v8a" to 2, "x86" to 3, "x86_64" 
 
 // ANDROID_APP specific: Update version code for each ABI split
 android.applicationVariants.all {
-    val variant = this
-    variant.outputs
-        .map { it as com.android.build.gradle.internal.api.ApkVariantOutputImpl }
-        .forEach { output ->
-            val abi = output.getFilter(com.android.build.OutputFile.ABI)
-            if (abi != null) {
-                val abiCode = abiCodes[abi] ?: 0
-                output.versionCodeOverride = abiCode * 1000 + (variant.versionCode ?: 1)
-            }
+    outputs.forEach { output ->
+        val outputImpl = output as com.android.build.gradle.internal.api.ApkVariantOutputImpl
+        val abi = outputImpl.getFilter("ABI") // Use the casted object to access the internal API
+        if (abi != null) {
+            val abiCode = abiCodes[abi] ?: 0
+            outputImpl.versionCodeOverride = abiCode * 1000 + versionCode
         }
+    }
 }
 
 dependencies {
@@ -100,6 +115,8 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.places)
+    implementation(libs.androidx.foundation)
+    implementation(libs.androidx.compose.ui.text)
     ksp(libs.androidx.room.compiler)
 
     // Removed unused View-based dependencies

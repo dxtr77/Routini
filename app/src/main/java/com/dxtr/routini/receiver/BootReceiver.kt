@@ -4,17 +4,12 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.dxtr.routini.data.AppDatabase
-import com.dxtr.routini.receiver.AlarmReceiver
-import com.dxtr.routini.service.RoutiniService
 import com.dxtr.routini.utils.AlarmScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.LocalTime
-import java.time.DayOfWeek
-
 class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -41,7 +36,7 @@ class BootReceiver : BroadcastReceiver() {
                             
                             // Check if it should have fired today
                             val targetDays = task.specificDays ?: routine.recurringDays
-                            val isScheduledForToday = targetDays?.contains(now.dayOfWeek) ?: true
+                            val isScheduledForToday = targetDays.contains(now.dayOfWeek)
                             
                             if (isScheduledForToday) {
                                 val taskDateTime = LocalDateTime.of(today, time)
@@ -73,6 +68,12 @@ class BootReceiver : BroadcastReceiver() {
                 } catch (e: Exception) {
                     android.util.Log.e("BootReceiver", "Error rescheduling alarms", e)
                 } finally {
+                    // Refresh widgets after boot to ensure they show current data
+                    try {
+                        com.dxtr.routini.widget.TodayTasksWidgetProvider.refreshWidget(context)
+                    } catch (e: Exception) {
+                        android.util.Log.e("BootReceiver", "Error refreshing widgets", e)
+                    }
                     pendingResult.finish()
                 }
             }
@@ -80,13 +81,14 @@ class BootReceiver : BroadcastReceiver() {
     }
 
     private fun showMissedTaskNotification(context: Context, taskId: Int, title: String, taskType: String) {
-        val intent = Intent(context, AlarmReceiver::class.java).apply {
-            action = AlarmReceiver.ACTION_TRIGGER
-            putExtra("TITLE", "Missed: $title")
-            putExtra("TASK_ID", taskId)
-            putExtra("TASK_TYPE", taskType)
-            putExtra("PLAY_SOUND", false)
-        }
-        context.sendBroadcast(intent)
+        AlarmReceiver.showNotification(
+            context = context,
+            title = title,
+            playSound = false,
+            taskId = taskId,
+            taskType = taskType,
+            vibrationEnabled = true, // Defaulting to true for missed notifications
+            isMissed = true
+        )
     }
 }

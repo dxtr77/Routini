@@ -30,7 +30,21 @@ class AlarmReceiver : BroadcastReceiver() {
         // keys for extras
         const val EXTRA_TASK_ID = "TASK_ID"
         const val EXTRA_TASK_TYPE = "TASK_TYPE" // "ROUTINE" or "STANDALONE"
+        const val EXTRA_IS_MISSED = "IS_MISSED"
         const val TAG = "AlarmReceiver"
+
+        fun showNotification(
+            context: Context, 
+            title: String, 
+            playSound: Boolean, 
+            taskId: Int,
+            taskType: String?,
+            vibrationEnabled: Boolean,
+            isMissed: Boolean = false
+        ) {
+            val receiver = AlarmReceiver()
+            receiver.showNotificationInternal(context, title, playSound, taskId, taskType, vibrationEnabled, isMissed)
+        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -101,54 +115,84 @@ class AlarmReceiver : BroadcastReceiver() {
             }
 
             ACTION_TRIGGER, null -> {
-                // Normal Alarm Trigger
-                val soundUriString = intent.getStringExtra("SOUND_URI")
-                val title = intent.getStringExtra("TITLE") ?: "Routini Alarm"
-                val playSound = intent.getBooleanExtra("PLAY_SOUND", false)
+                val pendingResult = goAsync()
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        val db = AppDatabase.getDatabase(context)
+                        val isDone = when (taskType) {
+                            "ROUTINE" -> {
+                                db.routineHistoryDao().getHistoryForTaskOnDate(taskId, "ROUTINE", java.time.LocalDate.now()) != null
+                            }
+                            "STANDALONE" -> {
+                                val standaloneTaskId = taskId - 1000000
+                                db.standaloneTaskDao().getTaskById(standaloneTaskId)?.isDone == true
+                            }
+                            else -> false
+                        }
 
-                if (playSound) {
-                    val serviceIntent = Intent(context, RoutiniService::class.java).apply {
-                        this.action = RoutiniService.ACTION_PLAY
-                        putExtra(RoutiniService.EXTRA_SOUND_URI, soundUriString)
-                        putExtra(RoutiniService.EXTRA_TITLE, title)
-                        putExtra(RoutiniService.EXTRA_TASK_ID, taskId)
-                        putExtra(RoutiniService.EXTRA_TASK_TYPE, taskType)
-                    }
-                    context.startForegroundService(serviceIntent)
+                        if (!isDone) {
+                            val prefs = context.getSharedPreferences("routini_prefs", Context.MODE_PRIVATE)
+                            val taskAlarmsEnabled = prefs.getBoolean("task_alarms", true)
+                            val routineAlarmsEnabled = prefs.getBoolean("routine_alarms", true)
+                            val vibrationEnabled = prefs.getBoolean("vibration", true)
 
-                    val activityIntent = Intent(context, AlarmActivity::class.java).apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
-                                Intent.FLAG_ACTIVITY_CLEAR_TOP or 
-                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-                        putExtra("TITLE", title)
-                        putExtra(EXTRA_TASK_ID, taskId)
-                        putExtra(EXTRA_TASK_TYPE, taskType)
+                            val soundUriString = intent.getStringExtra("SOUND_URI")
+                            val title = intent.getStringExtra("TITLE") ?: "Routini Alarm"
+                            var playSound = intent.getBooleanExtra("PLAY_SOUND", false)
+
+                            if (playSound) {
+                                if (taskType == "ROUTINE" && !routineAlarmsEnabled) playSound = false
+                                if ((taskType == "STANDALONE" || taskType == null) && !taskAlarmsEnabled) playSound = false
+                            }
+
+                            val isMissed = intent.getBooleanExtra(EXTRA_IS_MISSED, false)
+                            if (playSound) {
+                                val serviceIntent = Intent(context, RoutiniService::class.java).apply {
+                                    this.action = RoutiniService.ACTION_PLAY
+                                    putExtra(RoutiniService.EXTRA_SOUND_URI, soundUriString)
+                                    putExtra(RoutiniService.EXTRA_TITLE, title)
+                                    putExtra(RoutiniService.EXTRA_TASK_ID, taskId)
+                                    putExtra(RoutiniService.EXTRA_TASK_TYPE, taskType)
+                                    putExtra("VIBRATE", vibrationEnabled)
+                                }
+                                context.startForegroundService(serviceIntent)
+                            } else {
+                                showNotificationInternal(context, title, false, taskId, taskType, vibrationEnabled, isMissed)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error checking task status in trigger", e)
+                    } finally {
+                        pendingResult.finish()
                     }
-                    context.startActivity(activityIntent)
-                } else {
-                    showNotification(context, title, playSound, taskId, taskType)
                 }
             }
         }
     }
 
     @SuppressLint("FullScreenIntentPolicy")
-    private fun showNotification(
+    private fun showNotificationInternal(
         context: Context, 
         title: String, 
         playSound: Boolean, 
         taskId: Int,
-        taskType: String?
+        taskType: String?,
+        vibrationEnabled: Boolean,
+        isMissed: Boolean
     ) {
         val channelId = if (playSound) "RoutiniAlarmChannel" else "RoutiniTaskChannel"
         val channelName = if (playSound) "Routini Alarms" else "Routini Tasks"
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        
+        val vbSuffix = if (vibrationEnabled) "_vib" else "_novib"
+        val finalChannelId = channelId + vbSuffix
 
-        val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_HIGH).apply {
+        val channel = NotificationChannel(finalChannelId, channelName, NotificationManager.IMPORTANCE_HIGH).apply {
             description = if (playSound) "Active alarms" else "Task reminders"
-            enableVibration(true)
-            vibrationPattern = longArrayOf(0, 500)
+            enableVibration(vibrationEnabled)
+            if (vibrationEnabled) vibrationPattern = longArrayOf(0, 500)
             setBypassDnd(true)
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             if (playSound) {
                 val audioAttributes = AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ALARM)
@@ -167,12 +211,11 @@ class AlarmReceiver : BroadcastReceiver() {
         
         val fullScreenPendingIntent = PendingIntent.getActivity(
             context,
-            taskId * 1000, // Unique Request Code
+            taskId * 1000, 
             fullScreenIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Target AlarmReceiver for background processing
         val doneIntent = Intent(context, AlarmReceiver::class.java).apply {
             action = ACTION_MARK_DONE
             putExtra(EXTRA_TASK_ID, taskId)
@@ -198,15 +241,24 @@ class AlarmReceiver : BroadcastReceiver() {
             )
         } else null
 
-        val builder = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle(title)
+        val finalTitle = when {
+            isMissed -> "Missed: $title"
+            !playSound -> "Reminder: $title"
+            else -> title
+        }
+
+        val builder = NotificationCompat.Builder(context, finalChannelId)
+            .setSmallIcon(R.mipmap.routini_icon)
+            .setContentTitle(finalTitle)
             .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setVibrate(longArrayOf(0, 500))
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setCategory(if (playSound) NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_EVENT)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .addAction(R.drawable.ic_launcher_foreground, "Mark as Done", donePendingIntent)
-            
+            .addAction(R.drawable.baseline_check_24, "Mark as Done", donePendingIntent)
+        
+        if (vibrationEnabled) {
+            builder.setVibrate(longArrayOf(0, 500))
+        }
+
         if (playSound) {
             builder.setFullScreenIntent(fullScreenPendingIntent, true) 
         }
@@ -218,8 +270,10 @@ class AlarmReceiver : BroadcastReceiver() {
                 .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent)
                 .setOngoing(true)
         } else {
-            builder.setContentText("Task due now.")
+            val contentText = if (isMissed) "Missed Alarm" else "Task Reminder"
+            builder.setContentText(contentText)
                 .setAutoCancel(true)
+                .setOngoing(false)
         }
         
         if (taskId != -1) {

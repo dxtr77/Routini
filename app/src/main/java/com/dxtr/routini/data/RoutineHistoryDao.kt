@@ -21,6 +21,9 @@ interface RoutineHistoryDao {
     @Query("SELECT * FROM routine_history WHERE completionDate = :completionDate")
     fun getHistoryForDate(completionDate: LocalDate): Flow<List<RoutineHistory>>
 
+    @Query("SELECT * FROM routine_history WHERE completionDate = :completionDate")
+    suspend fun getHistoryForDateSuspend(completionDate: LocalDate): List<RoutineHistory>
+
     @Query("SELECT * FROM routine_history WHERE completionDate >= :startDate")
     fun getHistorySince(startDate: LocalDate): Flow<List<RoutineHistory>>
 
@@ -29,6 +32,9 @@ interface RoutineHistoryDao {
 
     @Query("DELETE FROM routine_history WHERE taskType = 'ROUTINE' AND taskId IN (SELECT id FROM routine_tasks WHERE routineId = :routineId)")
     suspend fun deleteHistoryForRoutine(routineId: Int)
+
+    @Query("SELECT * FROM routine_history")
+    suspend fun getAllHistorySuspend(): List<RoutineHistory>
 
     @Query("""
         DELETE FROM routine_history 

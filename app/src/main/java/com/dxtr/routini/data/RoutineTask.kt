@@ -32,5 +32,6 @@ data class RoutineTask(
     val shouldPlaySound: Boolean = false,
     override val shouldVibrate: Boolean = false,
     // NEW: If null, follows Routine days. If set, runs only on these days.
-    val specificDays: List<DayOfWeek>? = null
+    val specificDays: List<DayOfWeek>? = null,
+    val sortOrder: Int = 0
 ) : Task

@@ -1,39 +1,89 @@
-# Routini - Daily Routine & Task Manager
+# Routini 🚀
+### Master your day, one routine at a time.
 
-**Routini** is a modern Android application designed to help users manage their daily routines and standalone tasks with a clean, intuitive interface. It leverages the latest Android development technologies to provide a robust and efficient user experience.
+**Routini** is a sleek, modern, and powerful Android application designed to help you reclaim your productivity. Whether you're building a morning routine, tracking your workout, or managing one-off tasks, Routini provides a clean, intuitive, and distraction-free experience.
 
----
-
-## ✨ Features
-
-- **Routine Management**: Create multiple routines (e.g., "Morning Routine", "Workout") with specific recurring days.
-- **Task Management**: 
-    - Add tasks to routines with titles, descriptions, and specific times.
-    - Create standalone tasks with specific dates and times.
-- **Flexible Alarms & Notifications**:
-    - For each task, choose between a silent **Notification** or a full **Alarm** with sound.
-    - Select from system ringtones or pick a custom audio file from your device for alarms.
-- **Smart Scheduling**: Alarms for recurring routines automatically reschedule for the next valid day, even if you mark today's task as complete.
-- **Daily Reset**: A background worker runs every midnight to reset the completion status of your daily tasks, ensuring you start each day fresh.
-- **Modern UI**: A swipeable interface allows you to switch between the Routines and Standalone Tasks screens, built entirely with Jetpack Compose.
----
-
-## 🛠️ Technology Stack
-
-This project is a showcase of modern Android development practices:
-
-- **UI**: 100% [Jetpack Compose](https://developer.android.com/jetpack/compose) for a declarative, modern UI.
-- **Architecture**: Follows a standard ViewModel architecture pattern.
-- **Navigation**: [Compose Navigation](https://developer.android.com/jetpack/compose/navigation) for all in-app screen transitions.
-- **Persistence**: [Room](https://developer.android.com/training/data-storage/room) for local database storage of routines and tasks.
-- **Asynchronous Operations**: Kotlin [Coroutines](https://kotlinlang.org/docs/coroutines-overview.html) and [Flow](https://kotlinlang.org/docs/flow.html) for managing background threads and data streams.
-- **Background Processing**: [WorkManager](https://developer.android.com/topic/libraries/architecture/workmanager) for reliable, guaranteed background work (daily task resets).
-- **Alarm Management**: `AlarmManager` for precise scheduling of task notifications and alarms.
-- **Build System**: [Gradle](https://gradle.org/) with Kotlin DSL (`build.gradle.kts`) and Version Catalogs (`libs.versions.toml`).
+Built with the latest Android technologies, Routini is fast, reliable, and looks beautiful on any device.
 
 ---
 
-## 📥 Download
+## ✨ Key Features
 
-If you just want to try the app, you can download the latest pre-built APK from the **[Releases](https://github.com/dxtr77/Routini/releases/tag/0.2-beta)** page.
+- **📅 Comprehensive Routine Management**
+  Create custom routines (e.g., "Morning Ritual", "Gym Session") and schedule them for specific days of the week.
+- **✅ Unified Task Tracking**
+  Manage both routine-bound tasks and standalone daily tasks in one place.
+- **⏰ Smart Alarms & Notifications**
+  Never miss a step. Choose between subtle silent notifications or full-screen alarms with custom sounds.
+- **🔄 Intelligent Rescheduling**
+  Completed a recurring task early? Routini automatically handles the scheduling for the next valid day.
+- **📊 Daily Progress Dashboard**
+  Track your completion status at a glance with a streamlined dashboard that resets every midnight.
+- **📱 Powerful Home Screen Widget**
+  Access and complete your tasks directly from your home screen with a feature-rich, interactive widget.
+- **📁 Data Portability**
+  Easily import and export your routines to keep your data safe and shareable.
+
+---
+
+## 🛠️ Built with Modern Android
+
+Routini is a showcase of cutting-edge Android development practices and libraries:
+
+- **Jetpack Compose**: 100% declarative UI for a fluid and responsive experience.
+- **Material 3**: Implementation of Google's latest design system for a premium feel.
+- **Architecture**: Clean MVVM architecture for scalability and maintainability.
+- **Room Database**: Robust local persistence for all your data.
+- **WorkManager**: Reliable background processing for daily resets and data maintenance.
+- **Kotlin Coroutines & Flow**: Reactive data streams and efficient concurrency.
+- **AlarmManager**: Precise timing for mission-critical task alerts.
+
+---
+
+## 📸 Preview
+
+| Home Screen | Routines | Standalone Tasks |
+| :---: | :---: | :---: |
+| *[Add Screenshot]* | *[Add Screenshot]* | *[Add Screenshot]* |
+
+---
+
+## 📥 Getting Started
+
+### Prerequisites
+- Android Studio Ladybug or later
+- Android 8.0+ (API 26) device/emulator
+
+### Installation
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/dxtr77/Routini.git
+   ```
+2. Open the project in **Android Studio**.
+3. Sync Gradle and run the app on your device.
+
+### ⚙️ Configuration (Optional)
+To enable the **Buy Me A Coffee** and **USDT** donation buttons in the settings screen, you need to add your personal links to the `local.properties` file (which is gitignored for your privacy):
+
+```properties
+BUY_ME_A_COFFEE_URL=https://buymeacoffee.com/dxtr77
+USDT_ADDRESS=TBGk29qshF8LNdpNRMV8CxoSpkeZ1Gcrpz
+```
+
+Alternatively, download the latest APK from the **[Releases](https://github.com/dxtr77/Routini/releases)** page.
+
+---
+
+## ❤️ Support the Project
+
+If Routini helps you stay organized and you'd like to support its development, consider a donation:
+
+- **☕ Buy Me a Coffee**: [buymeacoffee.com/dxtr77](https://buymeacoffee.com/dxtr77)
+- **💎 USDT (TRC20)**: `TBGk29qshF8LNdpNRMV8CxoSpkeZ1Gcrpz`
+
+Your support helps me keep the project alive and ad-free!
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 

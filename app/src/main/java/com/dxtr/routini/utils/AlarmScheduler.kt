@@ -15,6 +15,46 @@ import java.time.ZoneId
 object AlarmScheduler {
 
     private const val STANDALONE_TASK_OFFSET = 1000000
+    private const val DAILY_REMINDER_ID = 2000000
+
+    fun scheduleDailyReminder(context: Context, hour: Int, minute: Int) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(context, com.dxtr.routini.receiver.ReminderReceiver::class.java)
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            DAILY_REMINDER_ID,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val calendar = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, hour)
+            set(java.util.Calendar.MINUTE, minute)
+            set(java.util.Calendar.SECOND, 0)
+            if (before(java.util.Calendar.getInstance())) {
+                add(java.util.Calendar.DAY_OF_YEAR, 1)
+            }
+        }
+
+        alarmManager.setRepeating(
+            AlarmManager.RTC_WAKEUP,
+            calendar.timeInMillis,
+            AlarmManager.INTERVAL_DAY,
+            pendingIntent
+        )
+    }
+
+    fun cancelDailyReminder(context: Context) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(context, com.dxtr.routini.receiver.ReminderReceiver::class.java)
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            DAILY_REMINDER_ID,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        alarmManager.cancel(pendingIntent)
+    }
 
     fun scheduleRoutineTaskAlarm(context: Context, task: RoutineTask, recurringDays: List<DayOfWeek>?) {
         val time = task.time ?: return
@@ -31,6 +71,12 @@ object AlarmScheduler {
     }
 
     fun scheduleStandaloneTaskAlarm(context: Context, task: StandaloneTask) {
+        val taskId = task.id + STANDALONE_TASK_OFFSET
+        if (task.isDone) {
+            cancelAlarm(context, taskId)
+            return
+        }
+
         val time = task.time ?: return
 
         val triggerAtMillis: Long = if (task.date != null) {
@@ -38,10 +84,10 @@ object AlarmScheduler {
             if (taskDateTime.isBefore(LocalDateTime.now())) return
             taskDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         } else {
-            calculateNextAlarmTime(time, null, false) ?: return
+            calculateNextAlarmTime(time, null, task.isDone) ?: return
         }
 
-        scheduleAlarm(context, task.id + STANDALONE_TASK_OFFSET, task.title, task.customSoundUri, task.shouldPlaySound, triggerAtMillis, "STANDALONE")
+        scheduleAlarm(context, taskId, task.title, task.customSoundUri, task.shouldPlaySound, triggerAtMillis, "STANDALONE")
     }
 
     fun cancelRoutineTaskAlarm(context: Context, task: RoutineTask) { cancelAlarm(context, task.id) }
@@ -54,8 +100,17 @@ object AlarmScheduler {
             putExtra("TITLE", title); putExtra("SOUND_URI", soundUri); putExtra("PLAY_SOUND", playSound); putExtra("TASK_ID", taskId); putExtra("TASK_TYPE", taskType)
         }
         val pendingIntent = PendingIntent.getBroadcast(context, taskId, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val alarmClockInfo = AlarmManager.AlarmClockInfo(triggerAtMillis, pendingIntent)
-        alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
+        
+        if (playSound) {
+            val alarmClockInfo = AlarmManager.AlarmClockInfo(triggerAtMillis, pendingIntent)
+            alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
+        } else {
+            alarmManager.setExactAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                triggerAtMillis,
+                pendingIntent
+            )
+        }
     }
 
     private fun cancelAlarm(context: Context, taskId: Int) {

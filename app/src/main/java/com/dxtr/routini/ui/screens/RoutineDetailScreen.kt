@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Button
@@ -32,10 +31,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -51,6 +52,7 @@ import com.dxtr.routini.R
 import com.dxtr.routini.data.Routine
 import com.dxtr.routini.data.RoutineTask
 import com.dxtr.routini.ui.composables.QuickTaskItem
+import com.dxtr.routini.ui.composables.RoutineDialog
 import com.dxtr.routini.ui.composables.TaskDialog
 import com.dxtr.routini.ui.theme.AppIcons
 import java.time.DayOfWeek
@@ -67,19 +69,21 @@ fun RoutineDetailScreen(
     val routine = routines.find { it.id == routineId }
     val selectedDate by viewModel.selectedDate.collectAsState()
     val allTasks by viewModel.getTasksForRoutine(routineId).collectAsState(initial = emptyList())
+    // Observe history for the selected date to correctly show "done" status
+    val history by viewModel.getHistoryForDate(selectedDate).collectAsState(initial = emptyList())
     val isSaving by viewModel.isSavingTask.collectAsState()
 
     if (routine == null) {
         return
     }
 
-    var selectedTab by remember { mutableStateOf(0) }
+    var selectedTab by remember { mutableIntStateOf(0) }
     var showTaskDialog by remember { mutableStateOf(false) }
     var taskToEdit by remember { mutableStateOf<RoutineTask?>(null) }
     var showRoutineDialog by remember { mutableStateOf(false) }
 
     val today = LocalDate.now()
-    val isTodayInActiveDays = routine.recurringDays.contains(today.dayOfWeek)
+    val isDateInActiveDays = routine.recurringDays.contains(selectedDate.dayOfWeek)
 
     Scaffold(
         topBar = {
@@ -91,6 +95,11 @@ fun RoutineDetailScreen(
                     }
                 },
                 actions = {
+                    if (selectedDate != today) {
+                        TextButton(onClick = { viewModel.onDateSelected(today) }) {
+                            Text("Today", color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
                     IconButton(onClick = { showRoutineDialog = true }) {
                         Icon(painter = painterResource(id = AppIcons.Edit), contentDescription = "Edit Routine")
                     }
@@ -108,24 +117,40 @@ fun RoutineDetailScreen(
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
             TabRow(selectedTabIndex = selectedTab) {
-                Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Today") })
+                Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { 
+                    val tabText = when (selectedDate) {
+                        today -> "Today"
+                        today.plusDays(1) -> "Tomorrow"
+                        today.minusDays(1) -> "Yesterday"
+                        else -> selectedDate.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.SHORT))
+                    }
+                    Text(tabText) 
+                })
                 Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("All Tasks") })
             }
 
             when (selectedTab) {
                 0 -> {
-                    if (isTodayInActiveDays) {
-                        val tasksForToday = allTasks.filter { it.specificDays.isNullOrEmpty() || it.specificDays.contains(today.dayOfWeek) }
-                        if (tasksForToday.isEmpty()) {
+                    if (isDateInActiveDays) {
+                        // Apply history completion status to tasks
+                        val tasksForSelectedDate = allTasks
+                            .filter { it.specificDays.isNullOrEmpty() || it.specificDays.contains(selectedDate.dayOfWeek) }
+                            .map { task ->
+                                val isDone = if (selectedDate == today) task.isDone 
+                                            else history.any { it.taskId == task.id && it.taskType == "ROUTINE" }
+                                task.copy(isDone = isDone)
+                            }
+
+                        if (tasksForSelectedDate.isEmpty()) {
                             Box(modifier = Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-                                Text("No tasks for today", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("No tasks for ${if (selectedDate == today) "today" else "this day"}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         } else {
                             LazyColumn(
                                 contentPadding = PaddingValues(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                items(tasksForToday, key = { it.id }) { task ->
+                                items(tasksForSelectedDate, key = { it.id }) { task ->
                                     QuickTaskItem(
                                         task = task,
                                         onToggle = { viewModel.updateTaskStatus(task, !task.isDone, selectedDate) },
@@ -139,10 +164,13 @@ fun RoutineDetailScreen(
                             }
                         }
                     } else {
-                        RestDayCard(routine = routine) {
-                            val daysToAdd = it.value - today.dayOfWeek.value
-                            val finalDaysToAdd = if (daysToAdd < 0) daysToAdd + 7 else daysToAdd
-                            viewModel.onDateSelected(today.plusDays(finalDaysToAdd.toLong()))
+                        RestDayCard(
+                            routine = routine,
+                            selectedDate = selectedDate
+                        ) {
+                            val daysToAdd = it.value - selectedDate.dayOfWeek.value
+                            val finalDaysToAdd = if (daysToAdd <= 0) daysToAdd + 7 else daysToAdd
+                            viewModel.onDateSelected(selectedDate.plusDays(finalDaysToAdd.toLong()))
                         }
                     }
                 }
@@ -197,13 +225,17 @@ fun RoutineDetailScreen(
                         }
 
                         // Filter Logic
-                        val filteredTasks = if (selectedFilterDays.isEmpty()) {
+                        val filteredTasks = (if (selectedFilterDays.isEmpty()) {
                             allTasks 
                         } else {
                             allTasks.filter { task ->
                                 val effectiveDays = if (task.specificDays.isNullOrEmpty()) routine.recurringDays else task.specificDays
                                 effectiveDays.any { it in selectedFilterDays }
                             }
+                        }).map { task ->
+                            val isDone = if (selectedDate == today) task.isDone 
+                                        else history.any { it.taskId == task.id && it.taskType == "ROUTINE" }
+                            task.copy(isDone = isDone)
                         }
 
                         LazyColumn(
@@ -292,13 +324,14 @@ fun RoutineDetailScreen(
         RoutineDialog(
             routine = routine,
             onConfirm = { name, days ->
-                viewModel.updateRoutine(routine.copy(name = name, recurringDays = days))
+                val defaultColor = 0xFF6200EE.toInt()
+                viewModel.updateRoutine(routine.copy(name = name, recurringDays = days, themeColor = defaultColor))
                 showRoutineDialog = false
             },
             onDelete = {
                 viewModel.deleteRoutine(routine)
-                showRoutineDialog = false
                 navController.popBackStack()
+                showRoutineDialog = false
             },
             onDismiss = { showRoutineDialog = false }
         )
@@ -306,7 +339,7 @@ fun RoutineDetailScreen(
 }
 
 @Composable
-fun RestDayCard(routine: Routine, onStartEarly: (DayOfWeek) -> Unit) {
+fun RestDayCard(routine: Routine, selectedDate: LocalDate, onStartEarly: (DayOfWeek) -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -334,13 +367,19 @@ fun RestDayCard(routine: Routine, onStartEarly: (DayOfWeek) -> Unit) {
             Spacer(modifier = Modifier.height(16.dp))
             Text("Rest Day", style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(8.dp))
+            val dateText = when (selectedDate) {
+                LocalDate.now() -> "today"
+                LocalDate.now().plusDays(1) -> "tomorrow"
+                else -> "on this day"
+            }
             Text(
-                "No tasks scheduled for today.",
+                "No tasks scheduled $dateText.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
-            val nextRunDay = routine.recurringDays.firstOrNull { it > LocalDate.now().dayOfWeek } ?: routine.recurringDays.firstOrNull()
+            
+            val nextRunDay = routine.recurringDays.firstOrNull { it > selectedDate.dayOfWeek } ?: routine.recurringDays.firstOrNull()
             if (nextRunDay != null) {
                 Spacer(modifier = Modifier.height(16.dp))
                 val dayName = nextRunDay.name.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }

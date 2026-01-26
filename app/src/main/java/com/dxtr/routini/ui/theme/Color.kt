@@ -49,6 +49,23 @@ val BackgroundDark = Color(0xFF101413)
 val SurfaceDark = Color(0x991C1B1F) // Dark grey base for glass on dark
 val OnSurfaceDark = Color(0xFFE1E3DF)
 
-// Gradients
+// Semantic Colors
+val SuccessLight = Color(0xFF00C853)
+val SuccessDark = Color(0xFF69F0AE)
+val WarningLight = Color(0xFFFFAB00)
+val WarningDark = Color(0xFFFFD740)
+val ErrorLight = Color(0xFFD32F2F)
+val ErrorDark = Color(0xFFEF5350)
+
+// Gradients for modern UI
 val GradientStart = Color(0xFF80D5BF)
 val GradientEnd = Color(0xFF4CA8CD)
+val GradientPurpleStart = Color(0xFF667EEA)
+val GradientPurpleEnd = Color(0xFF764BA2)
+val GradientSunsetStart = Color(0xFFFF6B6B)
+val GradientSunsetEnd = Color(0xFFFFE66D)
+
+// Task Priority Colors
+val PriorityHigh = Color(0xFFFF5252)
+val PriorityMedium = Color(0xFFFFAB40)
+val PriorityLow = Color(0xFF69F0AE)

@@ -16,7 +16,6 @@ class ResetTasksWorker(
         return try {
             val db = AppDatabase.getDatabase(applicationContext)
             val routineDao = db.routineDao()
-            val standaloneTaskDao = db.standaloneTaskDao()
 
             routineDao.resetAllTasks()
             // Standalone tasks are one-off, so we do not reset them.

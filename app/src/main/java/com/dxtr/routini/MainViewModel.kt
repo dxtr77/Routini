@@ -10,8 +10,6 @@ import com.dxtr.routini.data.RoutineTask
 import com.dxtr.routini.data.StandaloneTask
 import com.dxtr.routini.data.Task
 import com.dxtr.routini.utils.AlarmScheduler
-import android.appwidget.AppWidgetManager
-import android.content.ComponentName
 import com.dxtr.routini.widget.TodayTasksWidgetProvider
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -27,6 +25,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.LocalTime
+import androidx.core.content.edit
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -35,28 +35,84 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val routineHistoryDao = AppDatabase.getDatabase(application).routineHistoryDao()
     private val alarmScheduler = AlarmScheduler
     private val backupManager = com.dxtr.routini.data.BackupManager(application)
+    private val prefs =
+        application.getSharedPreferences("routini_prefs", android.content.Context.MODE_PRIVATE)
+
+    fun isFirstLaunch(): Boolean = prefs.getBoolean("first_launch", true)
+
+    fun setFirstLaunchComplete() {
+        prefs.edit { putBoolean("first_launch", false) }
+    }
+
+    private val _themeMode =
+        MutableStateFlow(prefs.getInt("theme_mode", 0)) // 0: System, 1: Light, 2: Dark
+    val themeMode: StateFlow<Int> = _themeMode.asStateFlow()
+
+    fun setThemeMode(mode: Int) {
+        prefs.edit { putInt("theme_mode", mode) }
+        _themeMode.value = mode
+    }
+
+    private val _dailyReminderEnabled = MutableStateFlow(prefs.getBoolean("daily_reminder_enabled", false))
+    val dailyReminderEnabled = _dailyReminderEnabled.asStateFlow()
+
+    private val _dailyReminderTime: MutableStateFlow<LocalTime> = MutableStateFlow(
+        LocalTime.of(
+            prefs.getInt("daily_reminder_hour", 9),
+            prefs.getInt("daily_reminder_minute", 0)
+        )
+    )
+    val dailyReminderTime = _dailyReminderTime.asStateFlow()
+
+    fun setDailyReminderEnabled(enabled: Boolean) {
+        prefs.edit { putBoolean("daily_reminder_enabled", enabled) }
+        _dailyReminderEnabled.value = enabled
+        if (enabled) {
+            val time = _dailyReminderTime.value
+            alarmScheduler.scheduleDailyReminder(getApplication(), time.hour, time.minute)
+        } else {
+            alarmScheduler.cancelDailyReminder(getApplication())
+        }
+    }
+
+    fun setDailyReminderTime(time: LocalTime) {
+        prefs.edit { 
+            putInt("daily_reminder_hour", time.hour)
+            putInt("daily_reminder_minute", time.minute)
+        }
+        _dailyReminderTime.value = time
+        if (_dailyReminderEnabled.value) {
+            alarmScheduler.scheduleDailyReminder(getApplication(), time.hour, time.minute)
+        }
+    }
 
     fun exportData(uri: android.net.Uri) = viewModelScope.launch {
         try {
             backupManager.exportData(uri)
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun importData(uri: android.net.Uri) = viewModelScope.launch {
         try {
             backupManager.importData(uri)
             // Trigger a refresh if needed, but Flow/LiveData should handle it
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun exportRoutine(routineId: Int, uri: android.net.Uri) = viewModelScope.launch {
         try {
             backupManager.exportRoutine(routineId, uri)
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun notifyWidgets() {
-        TodayTasksWidgetProvider.refreshWidget(getApplication<Application>())
+        TodayTasksWidgetProvider.refreshWidget(getApplication())
     }
 
     private val _isSavingTask = MutableStateFlow(false)
@@ -64,6 +120,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _selectedDate = MutableStateFlow(LocalDate.now())
     val selectedDate: StateFlow<LocalDate> = _selectedDate.asStateFlow()
+
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -79,26 +136,63 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _showAddTaskDialog.value = show
     }
 
+    private val _showDonationPrompt = MutableStateFlow(false)
+    val showDonationPrompt = _showDonationPrompt.asStateFlow()
+
+    fun dismissDonationPrompt() {
+        _showDonationPrompt.value = false
+        prefs.edit { putLong("last_donation_prompt", System.currentTimeMillis()) }
+    }
+
+    private fun checkDonationPrompt() {
+        // Skip if no donation links are configured
+        if (BuildConfig.BUY_ME_A_COFFEE_URL.isEmpty() && BuildConfig.USDT_ADDRESS.isEmpty()) return
+
+        val isFirst = prefs.getBoolean("donation_first_launch", true)
+        if (isFirst) {
+            _showDonationPrompt.value = true
+            prefs.edit { putBoolean("donation_first_launch", false) }
+            return
+        }
+
+        val lastPrompt = prefs.getLong("last_donation_prompt", 0L)
+        val oneWeekMillis = 7 * 24 * 60 * 60 * 1000L
+        if (System.currentTimeMillis() - lastPrompt > oneWeekMillis) {
+            _showDonationPrompt.value = true
+        }
+    }
+
     init {
         viewModelScope.launch {
             try {
                 routineHistoryDao.cleanupOrphanedHistory()
-            } catch (e: Exception) { e.printStackTrace() }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
         notifyWidgets()
+        checkDonationPrompt()
     }
-
-    val weeklyStats: StateFlow<Map<LocalDate, Int>> = routineHistoryDao.getHistorySince(LocalDate.now().minusDays(6))
-        .map { historyList ->
-            historyList.groupBy { it.completionDate }.mapValues { it.value.size }
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     val routines: StateFlow<List<Routine>> = routineDao.getAllRoutines()
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val allStandaloneTasks: Flow<List<StandaloneTask>> = standaloneTaskDao.getAllStandaloneTasks()
+    val filteredRoutines: StateFlow<List<Routine>> = combine(
+        routines,
+        _searchQuery
+    ) { routines, query ->
+        if (query.isBlank()) routines
+        else routines.filter { it.name.contains(query, ignoreCase = true) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val allStandaloneTasks: Flow<List<StandaloneTask>> =
+        standaloneTaskDao.getAllStandaloneTasks()
+    
+    val taskCountsPerDate: StateFlow<Map<LocalDate, Int>> =
+        standaloneTaskDao.getTaskCountsPerDate()
+            .map { list -> list.associate { it.date to it.count } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val tasks: StateFlow<List<Task>> = selectedDate.flatMapLatest { date ->
@@ -118,17 +212,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            combine(combinedRoutineTasksFlow, standaloneTasksFlow, historyFlow, _searchQuery) { routineTasks, standaloneTasks, history, query ->
+            combine(
+                combinedRoutineTasksFlow,
+                standaloneTasksFlow,
+                historyFlow,
+                _searchQuery
+            ) { routineTasks, standaloneTasks, history, query ->
                 val allTasks = mutableListOf<Task>()
                 val today = LocalDate.now()
 
                 allTasks.addAll(routineTasks.map { task ->
-                    val isDone = if (date == today) task.isDone else history.any { it.taskId == task.id && it.taskType == "ROUTINE" }
+                    val isDone =
+                        if (date == today) task.isDone else history.any { it.taskId == task.id && it.taskType == "ROUTINE" }
                     task.copy(isDone = isDone)
                 })
 
                 allTasks.addAll(standaloneTasks.map { task ->
-                    val isDone = if (date == today) task.isDone else history.any { it.taskId == task.id && it.taskType == "STANDALONE" }
+                    val isDone =
+                        if (date == today) task.isDone else history.any { it.taskId == task.id && it.taskType == "STANDALONE" }
                     task.copy(isDone = isDone)
                 })
 
@@ -136,14 +237,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     .sortedWith(compareBy(nullsLast()) { it.time })
             }
         }
-        .distinctUntilChanged()
+            .distinctUntilChanged()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val allTasks: StateFlow<List<StandaloneTask>> = combine(allStandaloneTasks, _searchQuery) { tasks, query ->
-        tasks.filter { it.title.contains(query, ignoreCase = true) }
-    }
-    .distinctUntilChanged()
-    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val allTasks: StateFlow<List<StandaloneTask>> =
+        combine(allStandaloneTasks, _searchQuery) { tasks, query ->
+            tasks.filter { it.title.contains(query, ignoreCase = true) }
+        }
+            .distinctUntilChanged()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
 
     fun onNextDay() {
@@ -158,11 +260,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _selectedDate.value = date
     }
 
+    fun getHistoryForDate(date: LocalDate): Flow<List<RoutineHistory>> {
+        return routineHistoryDao.getHistoryForDate(date)
+    }
+
     // Routines
     fun addRoutine(routine: Routine) = viewModelScope.launch {
         try {
             routineDao.insertRoutine(routine)
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun updateRoutine(routine: Routine) = viewModelScope.launch {
@@ -176,7 +284,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             routineDao.deleteRoutine(routine)
             routineHistoryDao.cleanupOrphanedHistory()
             notifyWidgets()
-        } catch(e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun getTasksForRoutine(routineId: Int): Flow<List<RoutineTask>> {
@@ -191,9 +301,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (task.time != null) {
                 val routine = routineDao.getRoutineById(task.routineId)
                 val newTask = task.copy(id = id.toInt())
-                alarmScheduler.scheduleRoutineTaskAlarm(getApplication(), newTask, routine?.recurringDays)
+                alarmScheduler.scheduleRoutineTaskAlarm(
+                    getApplication(),
+                    newTask,
+                    routine?.recurringDays
+                )
             }
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         notifyWidgets()
         _isSavingTask.value = false
     }
@@ -229,7 +345,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val newTask = task.copy(id = id.toInt())
                 alarmScheduler.scheduleStandaloneTaskAlarm(getApplication(), newTask)
             }
-        } catch(e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         notifyWidgets()
         _isSavingTask.value = false
     }
@@ -265,21 +383,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         updateRoutineTask(updatedTask)
                     }
                     if (isDone) {
-                        routineHistoryDao.insert(RoutineHistory(taskId = task.id, taskType = "ROUTINE", completionDate = date))
+                        routineHistoryDao.insert(
+                            RoutineHistory(
+                                taskId = task.id,
+                                taskType = "ROUTINE",
+                                completionDate = date
+                            )
+                        )
                     } else {
                         routineHistoryDao.delete(task.id, "ROUTINE", date)
                     }
                     if (task.time != null) {
                         val routine = routineDao.getRoutineById(task.routineId)
-                        alarmScheduler.scheduleRoutineTaskAlarm(getApplication(), updatedTask, routine?.recurringDays)
+                        alarmScheduler.scheduleRoutineTaskAlarm(
+                            getApplication(),
+                            updatedTask,
+                            routine?.recurringDays
+                        )
                     }
                 }
+
                 is StandaloneTask -> {
                     val updatedTask = task.copy(isDone = isDone)
                     updateStandaloneTask(updatedTask)
                     if (date != null) {
                         if (isDone) {
-                            routineHistoryDao.insert(RoutineHistory(taskId = task.id, taskType = "STANDALONE", completionDate = date))
+                            routineHistoryDao.insert(
+                                RoutineHistory(
+                                    taskId = task.id,
+                                    taskType = "STANDALONE",
+                                    completionDate = date
+                                )
+                            )
                         } else {
                             routineHistoryDao.delete(task.id, "STANDALONE", date)
                         }
@@ -287,6 +422,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     if (task.time != null) {
                         alarmScheduler.scheduleStandaloneTaskAlarm(getApplication(), updatedTask)
                     }
+                }
+            }
+            notifyWidgets()
+        }
+    }
+
+    fun moveRoutineUp(routine: Routine) = viewModelScope.launch {
+        val list = routines.value
+        val index = list.indexOfFirst { it.id == routine.id }
+        if (index > 0) {
+            swapRoutinesAndReindex(index, index - 1)
+        }
+    }
+
+    fun moveRoutineDown(routine: Routine) = viewModelScope.launch {
+        val list = routines.value
+        val index = list.indexOfFirst { it.id == routine.id }
+        if (index >= 0 && index < list.size - 1) {
+            swapRoutinesAndReindex(index, index + 1)
+        }
+    }
+
+    private suspend fun swapRoutinesAndReindex(index1: Int, index2: Int) {
+        val list = routines.value.sortedWith(compareBy({ it.sortOrder }, { it.id })).toMutableList()
+        if (index1 in list.indices && index2 in list.indices) {
+            java.util.Collections.swap(list, index1, index2)
+            list.forEachIndexed { index, routine ->
+                if (routine.sortOrder != index) {
+                    routineDao.updateRoutine(routine.copy(sortOrder = index))
                 }
             }
             notifyWidgets()

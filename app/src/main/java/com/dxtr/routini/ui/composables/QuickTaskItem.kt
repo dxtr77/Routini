@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,7 +23,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextDecoration
@@ -89,6 +87,7 @@ fun QuickTaskItem(task: RoutineTask, onToggle: () -> Unit, onEdit: () -> Unit, o
                 }
 
                 if (task.time != null) {
+                    val context = androidx.compose.ui.platform.LocalContext.current
                     androidx.compose.foundation.layout.Box(
                         modifier = Modifier
                             .background(
@@ -98,7 +97,7 @@ fun QuickTaskItem(task: RoutineTask, onToggle: () -> Unit, onEdit: () -> Unit, o
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = task.time.format(DateTimeFormatter.ofPattern("HH:mm")),
+                            text = com.dxtr.routini.utils.TimeUtils.formatTime(context, task.time),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold

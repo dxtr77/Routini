@@ -23,4 +23,10 @@ object AppIcons {
     val Check = R.drawable.baseline_check_24
     val MoreVert = R.drawable.baseline_more_vert_24
     val Search = R.drawable.baseline_search_24
+    val ExpandMore = R.drawable.baseline_expand_more_24
+    val ExpandLess = R.drawable.baseline_expand_less_24
+    val KeyboardArrowUp = R.drawable.baseline_keyboard_arrow_up_24
+    val KeyboardArrowDown = R.drawable.baseline_keyboard_arrow_down_24
+    val Star = R.drawable.baseline_star_24
+    val ContentCopy = R.drawable.baseline_content_copy_24
 }

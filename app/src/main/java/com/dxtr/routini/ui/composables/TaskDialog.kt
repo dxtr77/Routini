@@ -142,7 +142,7 @@ fun TaskDialog(
                     ) {
                         Icon(painter = painterResource(id = AppIcons.Schedule), contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(time?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: "Set Time")
+                        Text(time?.let { com.dxtr.routini.utils.TimeUtils.formatTime(context, it) } ?: "Set Time")
                     }
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -222,11 +222,18 @@ fun TaskDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Play Sound")
+                    Text(
+                        text = "Play Sound",
+                        color = if (time != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    )
                     Spacer(Modifier.weight(1f))
-                    Switch(checked = playSound, onCheckedChange = { playSound = it })
+                    Switch(
+                        checked = playSound && time != null, 
+                        onCheckedChange = { playSound = it },
+                        enabled = time != null
+                    )
                 }
-                AnimatedVisibility(playSound) {
+                AnimatedVisibility(playSound && time != null) {
                     OutlinedButton(
                         onClick = {
                             try {
@@ -254,9 +261,16 @@ fun TaskDialog(
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Vibrate")
+                    Text(
+                        text = "Vibrate",
+                        color = if (time != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    )
                     Spacer(Modifier.weight(1f))
-                    Switch(checked = shouldVibrate, onCheckedChange = { shouldVibrate = it })
+                    Switch(
+                        checked = shouldVibrate && time != null, 
+                        onCheckedChange = { shouldVibrate = it },
+                        enabled = time != null
+                    )
                 }
             }
         },
@@ -282,7 +296,11 @@ fun TaskDialog(
     )
 
     if (showTimePicker) {
-        val timeState = rememberTimePickerState(initialHour = time?.hour ?: 0, initialMinute = time?.minute ?: 0)
+        val timeState = rememberTimePickerState(
+            initialHour = time?.hour ?: 0, 
+            initialMinute = time?.minute ?: 0,
+            is24Hour = android.text.format.DateFormat.is24HourFormat(context)
+        )
         AlertDialog(
             onDismissRequest = { showTimePicker = false },
             title = { Text("Select Time") },

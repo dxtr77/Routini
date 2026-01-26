@@ -1,12 +1,10 @@
 package com.dxtr.routini.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,25 +20,29 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,18 +54,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dxtr.routini.MainViewModel
-import com.dxtr.routini.R
-import com.dxtr.routini.data.RoutineTask
-import com.dxtr.routini.data.StandaloneTask
 import com.dxtr.routini.data.Task
-import com.dxtr.routini.ui.composables.StandaloneTaskDialog
+import com.dxtr.routini.ui.composables.AnimatedCheckbox
+import com.dxtr.routini.ui.composables.CircularProgressRing
+import com.dxtr.routini.ui.composables.GlassCard
 import com.dxtr.routini.ui.theme.AppIcons
+import com.dxtr.routini.ui.theme.ErrorLight
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -71,22 +72,28 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
     val tasks by viewModel.tasks.collectAsState()
-    val routines by viewModel.routines.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
-    val isSaving by viewModel.isSavingTask.collectAsState()
+    
+    // EXCLUDE Anytime tasks (standalone tasks with null date) from progress
+    val progressTasks = remember(tasks) {
+        tasks.filter { task ->
+            !(task is com.dxtr.routini.data.StandaloneTask && task.date == null)
+        }
+    }
+    
+    val completedTasks = progressTasks.count { it.isDone }
+    val progress = if (progressTasks.isNotEmpty()) completedTasks.toFloat() / progressTasks.size else 0f
 
-    val completedTasks = tasks.count { it.isDone }
-    val progress = if (tasks.isNotEmpty()) completedTasks.toFloat() / tasks.size else 0f
-
-    var showTaskDialog by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
-
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    
+    var taskToDelete by remember { mutableStateOf<com.dxtr.routini.data.StandaloneTask?>(null) }
 
     // Glassmorphism Background Gradient
     val backgroundBrush = Brush.verticalGradient(
@@ -104,163 +111,124 @@ fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
     ) {
         Scaffold(
             containerColor = Color.Transparent,
-            contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0.dp), // Let LazyColumn handle insets
+            contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0.dp),
             snackbarHost = { SnackbarHost(snackbarHostState) }
         ) { padding ->
-                LazyColumn(
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp), // Just horizontal padding on the container
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                    contentPadding = PaddingValues(
-                        top = padding.calculateTopPadding() + 8.dp, // Add a little breathing room from status bar
-                        bottom = padding.calculateBottomPadding() + 80.dp
-                    )
-                ) {
+            LazyColumn(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(
+                    top = padding.calculateTopPadding() + 8.dp,
+                    bottom = padding.calculateBottomPadding() + 80.dp
+                )
+            ) {
+                item {
+                    // Header Section
+                    Column {
+                        Text(
+                            text = getGreeting(),
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            text = "Overview for ${selectedDate.format(DateTimeFormatter.ofPattern("MMM dd"))}",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+
+                item {
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        DateNavigationBar(
+                            selectedDate = selectedDate,
+                            onDateClicked = { showDatePicker = true },
+                            onPreviousDay = { viewModel.onPreviousDay() },
+                            onNextDay = { viewModel.onNextDay() },
+                            onResetToday = { viewModel.onDateSelected(LocalDate.now()) }
+                        )
+                    }
+                }
+
+
+                if (tasks.isNotEmpty()) {
                     item {
-
-                        // Greeting and Date Section
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = getGreeting(),
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onBackground
-                                )
-                                Text(
-                                    text = "Let's be productive today.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            DateNavigationBar(
-                                selectedDate = selectedDate,
-                                onDateClicked = { showDatePicker = true },
-                                onPreviousDay = { viewModel.onPreviousDay() },
-                                onNextDay = { viewModel.onNextDay() }
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Weekly Stats
-                        val weeklyStats = viewModel.weeklyStats.collectAsState().value
-                        GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            WeeklyStatsCard(weeklyStats)
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        AnimatedVisibility(visible = tasks.isNotEmpty()) {
-                            Column {
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
+                        GlassCard {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         "Daily Progress",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
                                     )
+                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        "${(progress * 100).toInt()}%",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary
+                                        "$completedTasks of ${tasks.size} tasks completed",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                     )
                                 }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                LinearProgressIndicator(
-                                    progress = { progress },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(8.dp),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+                                CircularProgressRing(
+                                    progress = progress,
+                                    size = 80.dp,
+                                    strokeWidth = 8.dp
                                 )
                             }
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-
-                    val standaloneTasks =
-                        tasks.filterIsInstance<StandaloneTask>().filter { it.date != null }
-                    if (standaloneTasks.isNotEmpty()) {
-                        item {
-                            SectionHeader(text = "Priorities")
-                        }
-                        items(standaloneTasks, key = { it.id }) { task ->
-                            Box {
-                                TaskCard(
-                                    task = task,
-                                    onTaskStatusChanged = { changedTask, isDone ->
-                                        viewModel.updateTaskStatus(
-                                            changedTask,
-                                            isDone,
-                                            selectedDate
-                                        )
-                                    },
-                                    onDelete = {
-                                        viewModel.deleteStandaloneTask(task)
-                                        scope.launch {
-                                            snackbarHostState.showSnackbar("Task deleted")
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    val routineTasks = tasks.filterIsInstance<RoutineTask>()
-                    val groupedRoutineTasks = routineTasks.groupBy { it.routineId }
-
-                    groupedRoutineTasks.forEach { (routineId, tasksInRoutine) ->
-                        val routine = routines.find { it.id == routineId }
-                        if (routine != null) {
-                            item {
-                                SectionHeader(text = routine.name)
-                            }
-                            items(tasksInRoutine, key = { "routine_${it.id}" }) { task ->
-                                Box {
-                                    TaskCard(
-                                        task = task,
-                                        onTaskStatusChanged = { changedTask, isDone ->
-                                            viewModel.updateTaskStatus(
-                                                changedTask,
-                                                isDone,
-                                                selectedDate
-                                            )
-                                        },
-                                        onDelete = {
-                                            viewModel.deleteRoutineTask(task)
-                                            scope.launch {
-                                                snackbarHostState.showSnackbar("Task deleted")
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    if (tasks.isEmpty()) {
-                        item {
-                            com.dxtr.routini.ui.composables.EmptyState(
-                                message = "All Caught Up!",
-                                icon = AppIcons.CheckCircle,
-                                showTip = true
-                            )
                         }
                     }
                 }
+
+                item {
+                    MotivationalQuoteCard()
+                }
+
+                // Group Tasks
+                val groupedTasks = groupTasksByTime(tasks)
+                
+                if (groupedTasks.isEmpty() && tasks.isEmpty()) {
+                    item {
+                        com.dxtr.routini.ui.composables.EmptyState(
+                            message = "No tasks for today!",
+                            icon = AppIcons.CheckCircle, // Using CheckCircle instead of EventAvailable if strict on icons
+                            showTip = true
+                        )
+                    }
+                } else {
+                    groupedTasks.forEach { (header, tasksInGroup) ->
+                        if (tasksInGroup.isNotEmpty()) {
+                            item {
+                                Text(
+                                    text = header,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(start = 4.dp, top = 8.dp)
+                                )
+                            }
+                            items(tasksInGroup, key = { it.id }) { task ->
+                                    SwipeableTaskItem(
+                                        task = task,
+                                        taskToDelete = taskToDelete,
+                                        onStatusChange = { isDone -> 
+                                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                            viewModel.updateTaskStatus(task, isDone, selectedDate)
+                                        },
+                                        onDelete = {
+                                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                            taskToDelete = task as com.dxtr.routini.data.StandaloneTask
+                                        },
+                                        isDeletable = task is com.dxtr.routini.data.StandaloneTask
+                                    )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -279,87 +247,220 @@ fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
                         )
                     }
                     showDatePicker = false
-                }) {
-                    Text("OK")
-                }
+                }) { Text("OK") }
             },
             dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
             }
         ) {
             DatePicker(state = datePickerState)
         }
     }
 
+    if (taskToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { taskToDelete = null },
+            title = { Text("Delete Task?") },
+            text = { Text("Are you sure you want to delete this task?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        taskToDelete?.let { task ->
+                            viewModel.deleteStandaloneTask(task)
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Task deleted")
+                            }
+                        }
+                        taskToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { taskToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SwipeableTaskItem(
+    task: Task,
+    taskToDelete: com.dxtr.routini.data.StandaloneTask?,
+    onStatusChange: (Boolean) -> Unit,
+    onDelete: () -> Unit,
+    isDeletable: Boolean
+) {
+    if (!isDeletable) {
+         TaskCard(task = task, onTaskStatusChanged = { _, isDone -> onStatusChange(isDone) })
+         return
     }
 
-    @Composable
-    fun GlassCard(
-        modifier: Modifier = Modifier,
-        onClick: (() -> Unit)? = null,
-        content: @Composable () -> Unit
-    ) {
-        Card(
-            modifier = modifier.then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
-            ),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-        ) {
-            Box(modifier = Modifier.padding(16.dp)) {
-                content()
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = {
+            if (it == SwipeToDismissBoxValue.EndToStart) {
+                onDelete()
+                false // Don't stick, wait for confirmation dialog
+            } else {
+                false
             }
+        }
+    )
+
+    // Robust snap-back: if deletion is cancelled (taskToDelete becomes null), ensure we are Settled
+    LaunchedEffect(taskToDelete) {
+        if (taskToDelete == null && dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
+            dismissState.snapTo(SwipeToDismissBoxValue.Settled)
         }
     }
 
-    @Composable
-    fun SectionHeader(text: String) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
-        )
-    }
+    SwipeToDismissBox(
+        state = dismissState,
+        backgroundContent = {
+            val color by animateColorAsState(
+                if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) ErrorLight else Color.Transparent,
+                label = "bgColor"
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(color, RoundedCornerShape(20.dp))
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Icon(
+                    painter = painterResource(id = AppIcons.Delete),
+                    contentDescription = "Delete",
+                    tint = Color.White
+                )
+            }
+        },
+        content = {
+            TaskCard(task = task, onTaskStatusChanged = { _, isDone -> onStatusChange(isDone) })
+        }
+    )
+}
 
-    @Composable
-    fun DateNavigationBar(
-        selectedDate: LocalDate,
-        onDateClicked: () -> Unit,
-        onPreviousDay: () -> Unit,
-        onNextDay: () -> Unit
+@Composable
+fun TaskCard(task: Task, onTaskStatusChanged: (Task, Boolean) -> Unit) {
+    var isExpanded by remember { mutableStateOf(false) }
+
+    AnimatedVisibility(
+        visible = true,
+        enter = fadeIn() + slideInVertically { it / 4 }
     ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+                .clickable { isExpanded = !isExpanded },
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (task.isDone)
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                else
+                    MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AnimatedCheckbox(
+                    checked = task.isDone,
+                    onCheckedChange = { onTaskStatusChanged(task, it) }
+                )
+                
+                Spacer(modifier = Modifier.size(16.dp))
+                
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = task.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = if (task.isDone) FontWeight.Normal else FontWeight.SemiBold,
+                        textDecoration = if (task.isDone) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
+                        color = if (task.isDone) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface
+                    )
+                    
+                    if (isExpanded && !task.description.isNullOrBlank()) {
+                         Spacer(modifier = Modifier.height(4.dp))
+                         Text(
+                             text = task.description!!,
+                             style = MaterialTheme.typography.bodyMedium,
+                             color = MaterialTheme.colorScheme.onSurfaceVariant
+                         )
+                    }
+                    
+                    task.time?.let { time ->
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                painter = painterResource(id = AppIcons.Schedule),
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            val context = androidx.compose.ui.platform.LocalContext.current
+                            Spacer(modifier = Modifier.size(4.dp))
+                            Text(
+                                text = com.dxtr.routini.utils.TimeUtils.formatTime(context, time),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+fun DateNavigationBar(
+    selectedDate: LocalDate,
+    onDateClicked: () -> Unit,
+    onPreviousDay: () -> Unit,
+    onNextDay: () -> Unit,
+    onResetToday: () -> Unit
+) {
+    val today = LocalDate.now()
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
-                onClick = { onPreviousDay() },
+                onClick = onPreviousDay,
                 colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.primary)
             ) {
                 Icon(
                     painter = painterResource(id = AppIcons.ArrowBack),
-                    contentDescription = "Previous Day"
+                    contentDescription = "Previous"
                 )
             }
+
             Row(
                 modifier = Modifier.clickable { onDateClicked() },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = when (selectedDate) {
-                        LocalDate.now() -> "Today"
-                        LocalDate.now().plusDays(1) -> "Tomorrow"
-                        LocalDate.now().minusDays(1) -> "Yesterday"
-                        else -> selectedDate.format(DateTimeFormatter.ofPattern("EEEE, MMM dd"))
+                        today -> "Today"
+                        today.plusDays(1) -> "Tomorrow"
+                        today.minusDays(1) -> "Yesterday"
+                        else -> selectedDate.format(DateTimeFormatter.ofPattern("EEE, MMM dd"))
                     },
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -369,162 +470,95 @@ fun DashboardScreen(viewModel: MainViewModel = viewModel()) {
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
+
             IconButton(
-                onClick = { onNextDay() },
+                onClick = onNextDay,
                 colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.primary)
             ) {
                 Icon(
                     painter = painterResource(id = AppIcons.ArrowForward),
-                    contentDescription = "Next Day"
+                    contentDescription = "Next"
+                )
+            }
+        }
+
+        if (selectedDate != today) {
+            TextButton(
+                onClick = onResetToday,
+                modifier = Modifier.padding(top = 0.dp)
+            ) {
+                Text(
+                    "Back to Today",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }
     }
-
-    @Composable
-    fun TaskCard(task: Task, onTaskStatusChanged: (Task, Boolean) -> Unit, onDelete: () -> Unit) {
-        var isExpanded by remember { mutableStateOf(false) }
-
-        AnimatedVisibility(
-            visible = true,
-            enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
-            exit = fadeOut()
-        ) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 2.dp)
-                    .clickable { isExpanded = !isExpanded },
-                shape = RoundedCornerShape(20.dp), // Softer corners
-                colors = CardDefaults.cardColors(
-                    containerColor = if (task.isDone)
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                    else
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.6f) // More transparent
-                ),
-                border = BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f) // Subtle border
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp) // Flat for glass effect
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Checkbox(
-                        checked = task.isDone,
-                        onCheckedChange = { onTaskStatusChanged(task, it) },
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = MaterialTheme.colorScheme.primary,
-                            uncheckedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            checkmarkColor = MaterialTheme.colorScheme.onPrimary
-                        )
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = task.title,
-                            style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp), // Slightly larger
-                            fontWeight = if (task.isDone) FontWeight.Normal else FontWeight.Medium,
-                            textDecoration = if (task.isDone) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
-                            color = if (task.isDone) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface
-                        )
-
-                        AnimatedVisibility(visible = isExpanded && !task.description.isNullOrBlank()) {
-                            Text(
-                                text = task.description!!,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-                    }
-                    task.time?.let { time ->
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                                    shape = RoundedCornerShape(8.dp)
-                                )
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                time.format(DateTimeFormatter.ofPattern("HH:mm")),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
+}
 
 
-    private fun getGreeting(): String {
-        return when (LocalTime.now().hour) {
-            in 0..11 -> "Good Morning"
-            in 12..17 -> "Good Afternoon"
-            else -> "Good Evening"
-        }
-    }
+@Composable
+fun MotivationalQuoteCard() {
+    val quotes = listOf(
+        "Small steps every day.",
+        "Consistency is key.",
+        "You got this!",
+        "Focus on progress, not perfection."
+    )
+    val quote = remember { quotes.random() }
 
-    @Composable
-    fun WeeklyStatsCard(stats: Map<LocalDate, Int>) {
-        Column {
-            Text(
-                "Last 7 Days",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+    GlassCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                painter = painterResource(id = AppIcons.Star),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.tertiary,
+                modifier = Modifier.size(24.dp)
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                val today = LocalDate.now()
-                for (i in 6 downTo 0) {
-                    val date = today.minusDays(i.toLong())
-                    val count = stats[date] ?: 0
-                    val isToday = date == today
+            Spacer(modifier = Modifier.size(16.dp))
+            Text(
+                text = quote,
+                style = MaterialTheme.typography.bodyLarge,
+                fontStyle = FontStyle.Italic,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
 
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = date.dayOfWeek.name.take(1),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .background(
-                                    color = if (count > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(
-                                        alpha = 0.5f
-                                    ),
-                                    shape = androidx.compose.foundation.shape.CircleShape
-                                )
-                                .then(
-                                    if (isToday) Modifier.border(
-                                        1.dp,
-                                        MaterialTheme.colorScheme.onSurface,
-                                        androidx.compose.foundation.shape.CircleShape
-                                    ) else Modifier
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (count > 0) {
-                                Text(
-                                    text = count.toString(),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                            }
-                        }
-                    }
-                }
+fun getGreeting(): String {
+    val hour = LocalTime.now().hour
+    return when (hour) {
+        in 5..11 -> "Good Morning"
+        in 12..17 -> "Good Afternoon"
+        else -> "Good Evening"
+    }
+}
+
+fun groupTasksByTime(tasks: List<Task>): Map<String, List<Task>> {
+    val morning = mutableListOf<Task>()
+    val afternoon = mutableListOf<Task>()
+    val evening = mutableListOf<Task>()
+    val anytime = mutableListOf<Task>()
+
+    tasks.forEach { task ->
+        val time = task.time
+        if (time == null) {
+            anytime.add(task)
+        } else {
+            when (time.hour) {
+                in 5..11 -> morning.add(task)
+                in 12..17 -> afternoon.add(task)
+                else -> evening.add(task)
             }
         }
     }
+
+    val result = linkedMapOf<String, List<Task>>()
+    if (morning.isNotEmpty()) result["Morning"] = morning
+    if (afternoon.isNotEmpty()) result["Afternoon"] = afternoon
+    if (evening.isNotEmpty()) result["Evening"] = evening
+    if (anytime.isNotEmpty()) result["Anytime"] = anytime
+    return result
+}

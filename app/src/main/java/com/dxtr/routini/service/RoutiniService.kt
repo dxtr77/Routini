@@ -33,6 +33,8 @@ class RoutiniService : Service() {
     private var audioManager: AudioManager? = null
     private var focusRequest: AudioFocusRequest? = null
     private var vibrator: Vibrator? = null
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var timeoutRunnable: Runnable? = null
 
     override fun onBind(intent: Intent?): IBinder? {
         return null
@@ -65,13 +67,24 @@ class RoutiniService : Service() {
             val title = intent.getStringExtra(EXTRA_TITLE) ?: "Alarm"
             val taskId = intent.getIntExtra(EXTRA_TASK_ID, -1)
             val taskType = intent.getStringExtra(EXTRA_TASK_TYPE)
+            val shouldVibrate = intent.getBooleanExtra("VIBRATE", true)
 
             playSound(soundUriString)
-            startVibration()
+            if (shouldVibrate) startVibration()
 
             val notification = createAlarmNotification(title, taskId, taskType)
             startForeground(NOTIFICATION_ID, notification)
+
+            // Auto-timeout after 1 minute if not stopped
+            timeoutRunnable?.let { handler.removeCallbacks(it) }
+            timeoutRunnable = Runnable {
+                stopSound()
+                AlarmReceiver.showNotification(this, title, false, taskId, taskType, shouldVibrate, isMissed = true)
+                stopSelf()
+            }
+            handler.postDelayed(timeoutRunnable!!, 60000)
         } else if (action == ACTION_STOP) {
+            timeoutRunnable?.let { handler.removeCallbacks(it) }
             stopSound()
             stopSelf()
         }
@@ -142,7 +155,6 @@ class RoutiniService : Service() {
                     setDataSource(this@RoutiniService, soundUri)
                     prepareAsync()
                     setOnPreparedListener { it.start() }
-                    setOnCompletionListener { stopSelf() }
                 } else {
                     Log.e("RoutiniService", "No valid sound URI found to play.")
                 }
@@ -156,12 +168,7 @@ class RoutiniService : Service() {
     private fun startVibration() {
         stopVibration() // Stop any existing vibration
         val pattern = longArrayOf(0, 500, 500) // Vibrate 500ms, Pause 500ms
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0)) // 0 means repeat
-        } else {
-            @Suppress("DEPRECATION")
-            vibrator?.vibrate(pattern, 0)
-        }
+        vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0)) // 0 means repeat
     }
 
     private fun stopVibration() {
@@ -213,7 +220,7 @@ class RoutiniService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.mipmap.routini_icon)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
@@ -258,7 +265,7 @@ class RoutiniService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.mipmap.routini_icon)
             .setContentTitle(title)
             .setContentText("Alarm is ringing!")
             .setPriority(NotificationCompat.PRIORITY_MAX)
@@ -268,7 +275,7 @@ class RoutiniService : Service() {
             .setOngoing(true)
             .setVibrate(longArrayOf(0, 500))
             .setDeleteIntent(stopPendingIntent)
-            .addAction(R.drawable.ic_launcher_foreground, "Mark as Done", donePendingIntent)
+            .addAction(R.drawable.baseline_check_24, "Mark as Done", donePendingIntent)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent)
             .build()
     }

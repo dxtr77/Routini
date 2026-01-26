@@ -19,7 +19,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,7 +34,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,7 +44,6 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dxtr.routini.receiver.AlarmReceiver
@@ -114,9 +111,7 @@ class AlarmActivity : ComponentActivity() {
         setTurnScreenOn(true)
         window.addFlags(
             android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-            android.view.WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON or
-            android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-            android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            android.view.WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON
         )
         with(getSystemService(KEYGUARD_SERVICE) as KeyguardManager) {
             requestDismissKeyguard(this@AlarmActivity, null)
@@ -191,11 +186,14 @@ fun AlarmScreenContent(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val is24Hour = android.text.format.DateFormat.is24HourFormat(context)
+                
                 Text(
-                    text = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")),
+                    text = com.dxtr.routini.utils.TimeUtils.formatTime(context, LocalTime.now()),
                     style = MaterialTheme.typography.displayLarge.copy(
                         fontWeight = FontWeight.Bold,
-                        fontSize = 72.sp
+                        fontSize = if (is24Hour) 72.sp else 60.sp
                     ),
                     color = Color.White
                 )
@@ -237,7 +235,7 @@ fun AlarmScreenContent(
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = MaterialTheme.colorScheme.error
                         ),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(56.dp),

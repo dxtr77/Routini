@@ -8,4 +8,7 @@ sealed class Screen(val route: String) {
         fun createRoute(routineId: Int) = "routine_detail/$routineId"
     }
     object Permissions : Screen("permissions")
+    object Splash : Screen("splash")
+    object Onboarding : Screen("onboarding")
+    object Settings : Screen("settings")
 }

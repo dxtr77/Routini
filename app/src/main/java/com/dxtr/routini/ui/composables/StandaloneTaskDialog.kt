@@ -22,8 +22,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -91,6 +89,12 @@ fun StandaloneTaskDialog(
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    
+    // Character limits
+    val titleMaxLength = 50
+    val descriptionMaxLength = 200
+    
 
     val ringtonePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -126,18 +130,40 @@ fun StandaloneTaskDialog(
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
                     value = title,
-                    onValueChange = { title = it },
+                    onValueChange = { if (it.length <= titleMaxLength) title = it },
                     label = { Text(stringResource(R.string.task_title_label)) },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = showError && title.isBlank(),
+                    supportingText = {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            if (showError && title.isBlank()) {
+                                Text("Title is required", color = MaterialTheme.colorScheme.error)
+                            } else {
+                                Spacer(Modifier.weight(1f))
+                            }
+                            Text("${title.length}/$titleMaxLength")
+                        }
+                    }
                 )
+                
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedTextField(
                     value = description,
-                    onValueChange = { description = it },
+                    onValueChange = { if (it.length <= descriptionMaxLength) description = it },
                     label = { Text(stringResource(R.string.task_description_label)) },
                     modifier = Modifier.fillMaxWidth(),
-                    maxLines = 3
+                    maxLines = 3,
+                    supportingText = {
+                        Text(
+                            "${description.length}/$descriptionMaxLength",
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.End
+                        )
+                    }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -147,6 +173,7 @@ fun StandaloneTaskDialog(
                     Switch(
                         checked = isDateTimeEnabled,
                         onCheckedChange = {
+                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                             isDateTimeEnabled = it
                             if (isDateTimeEnabled) {
                                 if (date == null) date = LocalDate.now()
@@ -179,7 +206,7 @@ fun StandaloneTaskDialog(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        date?.format(DateTimeFormatter.ofPattern("MMM d, yy")) ?: "Set Date",
+                                        date?.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM)) ?: "Set Date",
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -212,7 +239,7 @@ fun StandaloneTaskDialog(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        time?.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)) ?: "Set Time",
+                                        time?.let { com.dxtr.routini.utils.TimeUtils.formatTime(context, it) } ?: "Set Time",
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -235,11 +262,22 @@ fun StandaloneTaskDialog(
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                            Text("Play Sound")
+                            val isReadyForAlarm = date != null && time != null
+                            Text(
+                                text = "Play Sound",
+                                color = if (isReadyForAlarm) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            )
                             Spacer(Modifier.weight(1f))
-                            Switch(checked = playSound, onCheckedChange = { playSound = it })
+                            Switch(
+                                checked = playSound && isReadyForAlarm, 
+                                onCheckedChange = { 
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                    playSound = it 
+                                },
+                                enabled = isReadyForAlarm
+                            )
                         }
-                        AnimatedVisibility(playSound) {
+                        AnimatedVisibility(playSound && date != null && time != null) {
                             OutlinedButton(
                                 onClick = {
 // FIX: Wrap in try-catch to prevent crash if activity not found
@@ -275,36 +313,42 @@ fun StandaloneTaskDialog(
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                            Text("Vibrate")
+                            val isReadyForAlarm = date != null && time != null
+                            Text(
+                                text = "Vibrate",
+                                color = if (isReadyForAlarm) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            )
                             Spacer(Modifier.weight(1f))
-                            Switch(checked = shouldVibrate, onCheckedChange = { shouldVibrate = it })
+                            Switch(
+                                checked = shouldVibrate && isReadyForAlarm, 
+                                onCheckedChange = { 
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                    shouldVibrate = it 
+                                },
+                                enabled = isReadyForAlarm
+                            )
                         }
                     }
                 }
             }
         },
         confirmButton = {
-            Button(
+            GradientButton(
                 onClick = {
                     if (isDateTimeEnabled && date != null && time != null) {
                         val taskDateTime = LocalDateTime.of(date, time)
                         if (taskDateTime.isBefore(LocalDateTime.now())) {
-                            showError = true
-                            return@Button
+                            return@GradientButton
                         }
                     }
                     val finalDate = if (isDateTimeEnabled) date else null
                     val finalTime = if (isDateTimeEnabled) time else null
                     onConfirm(title, description.ifBlank { null }, finalDate, finalTime, soundUri, playSound, shouldVibrate)
                 },
-                enabled = title.isNotBlank() && !isSaving
-            ) {
-                if (isSaving) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                } else {
-                    Text(stringResource(id = R.string.save_action))
-                }
-            }
+                text = if (isSaving) "Saving..." else stringResource(id = R.string.save_action),
+                enabled = title.isNotBlank() && !isSaving,
+                modifier = Modifier.width(100.dp)
+            )
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
@@ -340,7 +384,11 @@ fun StandaloneTaskDialog(
     }
 
     if (showTimePicker) {
-        val timeState = rememberTimePickerState(initialHour = time?.hour ?: 0, initialMinute = time?.minute ?: 0)
+        val timeState = rememberTimePickerState(
+            initialHour = time?.hour ?: 0, 
+            initialMinute = time?.minute ?: 0,
+            is24Hour = android.text.format.DateFormat.is24HourFormat(context)
+        )
         // Replaced TimePickerDialog with AlertDialog as it is not part of standard Material3 yet
         AlertDialog(
             onDismissRequest = { showTimePicker = false },
